@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Home Inventory MVP</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <h1>Home Inventory MVP</h1>
+        <p>Search items, manage inventory, and browse the full tree.</p>
+      </header>
+
+      <section class="panel">
+        <h2>Search</h2>
+        <div class="search-row">
+          <input id="query" type="text" placeholder="air compressor" />
+          <button id="searchBtn">Search</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Results</h2>
+          <span id="meta"></span>
+        </div>
+        <ul id="results" class="results"></ul>
+      </section>
+
+      <section class="panel two-col">
+        <div>
+          <h2>Create Location</h2>
+          <form id="createLocationForm" class="stack">
+            <input id="locName" type="text" placeholder="Name" required />
+            <input id="locCode" type="text" placeholder="Code (optional)" />
+            <input id="locType" type="text" placeholder="Type (room, shelf...)" />
+            <input id="locImageUrl" type="url" placeholder="Image URL (optional)" />
+            <div class="upload-row">
+              <input id="locImageFile" type="file" accept="image/*" />
+              <button type="button" id="uploadLocImageBtn">Upload Image</button>
+            </div>
+            <select id="locParentId">
+              <option value="">No parent (root)</option>
+            </select>
+            <button type="submit">Create Location</button>
+          </form>
+        </div>
+
+        <div>
+          <h2>Create Item</h2>
+          <form id="createItemForm" class="stack">
+            <input id="itemName" type="text" placeholder="Name" required />
+            <input id="itemBrand" type="text" placeholder="Brand (optional)" />
+            <input id="itemDescription" type="text" placeholder="Description (optional)" />
+            <input id="itemKeywords" type="text" placeholder="Keywords comma-separated" />
+            <input id="itemImageUrl" type="url" placeholder="Image URL (optional)" />
+            <div class="upload-row">
+              <input id="itemImageFile" type="file" accept="image/*" />
+              <button type="button" id="uploadItemImageBtn">Upload Image</button>
+            </div>
+            <select id="itemLocationId" required>
+              <option value="">Select location</option>
+            </select>
+            <button type="submit">Create Item</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel two-col">
+        <div>
+          <h2>Edit Location</h2>
+          <p id="locationEditorHint" class="hint">Select a location in the tree.</p>
+          <p id="locationBreadcrumb" class="crumb"></p>
+          <form id="editLocationForm" class="stack" hidden>
+            <input id="editLocName" type="text" placeholder="Name" required />
+            <input id="editLocCode" type="text" placeholder="Code (optional)" />
+            <input id="editLocType" type="text" placeholder="Type" />
+            <input id="editLocDescription" type="text" placeholder="Description" />
+            <input id="editLocImageUrl" type="url" placeholder="Image URL" />
+            <div class="upload-row">
+              <input id="editLocImageFile" type="file" accept="image/*" />
+              <button type="button" id="uploadEditLocImageBtn">Upload Image</button>
+            </div>
+            <select id="editLocParentId">
+              <option value="">No parent (root)</option>
+            </select>
+            <div class="button-row">
+              <button type="submit">Update Location</button>
+              <button type="button" id="deleteLocationBtn" class="danger">Delete Location</button>
+            </div>
+          </form>
+        </div>
+
+        <div>
+          <h2>Edit Item</h2>
+          <p id="itemEditorHint" class="hint">Select an item in the tree.</p>
+          <p id="itemBreadcrumb" class="crumb"></p>
+          <form id="editItemForm" class="stack" hidden>
+            <input id="editItemName" type="text" placeholder="Name" required />
+            <input id="editItemBrand" type="text" placeholder="Brand" />
+            <input id="editItemDescription" type="text" placeholder="Description" />
+            <input id="editItemKeywords" type="text" placeholder="Keywords comma-separated" />
+            <input id="editItemImageUrl" type="url" placeholder="Image URL" />
+            <div class="upload-row">
+              <input id="editItemImageFile" type="file" accept="image/*" />
+              <button type="button" id="uploadEditItemImageBtn">Upload Image</button>
+            </div>
+            <select id="editItemLocationId" required>
+              <option value="">Select location</option>
+            </select>
+            <label class="inline-check">
+              <input id="editItemLowChurn" type="checkbox" />
+              Low churn
+            </label>
+            <div class="button-row">
+              <button type="submit">Update Item</button>
+              <button type="button" id="deleteItemBtn" class="danger">Delete Item</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Inventory Tree</h2>
+          <div class="actions-row">
+            <button id="refreshTreeBtn">Refresh Tree</button>
+            <button id="seedBtn">Seed Demo Data</button>
+          </div>
+        </div>
+        <p id="treeMeta" class="hint"></p>
+        <div id="treeView" class="tree-view"></div>
+        <pre id="treeText" class="tree"></pre>
+      </section>
+
+      <p id="status" class="status"></p>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

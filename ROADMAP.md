@@ -1,370 +1,136 @@
-# Home Inventory System — Phased Implementation Roadmap
+# Home Inventory System — Execution Roadmap
 
-This document converts the original build specification into actionable implementation phases and tickets.
+This version tracks implementation in three views:
 
-Each phase builds on the previous one and delivers usable value.
-
----
-
-# Phase 0 — Foundation Setup
-
-## Goal
-
-Establish project scaffolding and infrastructure.
-
-### Tickets
-
-* [ ] Initialize repository
-* [ ] Configure database (Postgres)
-* [ ] Set up migration system
-* [ ] Configure object storage (for images)
-* [ ] Establish basic project structure (frontend + API)
-* [ ] Configure environment variables
-* [ ] Set up linting and formatting
-
-Definition of Done:
-
-* App runs locally
-* Database connected
-* Migrations operational
+1. Completed (current state)
+2. Remaining MVP gap
+3. Post-MVP backlog
 
 ---
 
-# Phase 1 — Core Data Model (MVP Backend)
+## 1) Completed (Current State)
 
-## Goal
+### Phase 0 — Foundation Setup
+- [x] Repository initialized
+- [x] Backend project structure created (`api/`)
+- [x] Environment config wired (`.env`, `.env.example`)
+- [x] Migration runner implemented
+- [x] Local Docker Postgres setup added (`docker-compose.yml`)
+- [x] Makefile workflow added (`db-up`, `migrate`, `seed`, `dev`, `test`)
 
-Implement flexible hierarchical location tree and items.
+### Phase 1 — Core Data Model
+- [x] `locations` table created
+- [x] `items` table created
+- [x] `locations.parent_id` index added
+- [x] `locations.code` unique non-null index added (global uniqueness)
+- [x] `items.location_id` index added
+- [x] `items.keywords` GIN index added
+- [x] `updated_at` triggers added
 
----
+### Phase 2 — Core API Layer
+- [x] `POST /locations`
+- [x] `GET /locations/tree`
+- [x] `GET /locations/:id/path`
+- [x] `PATCH /locations/:id`
+- [x] `DELETE /locations/:id`
+- [x] Cycle prevention on location move
+- [x] Delete guard (no child/item)
+- [x] `POST /items`
+- [x] `GET /items/:id`
+- [x] `GET /items?location_id=&limit=&offset=`
+- [x] `PATCH /items/:id`
+- [x] `DELETE /items/:id`
+- [x] Shared validation/error helper modules
 
-## 1.1 Locations Table
+### Phase 3 — Search + Siri + Backup
+- [x] `GET /items/search?q=&limit=&offset=` (ILIKE over name/brand/description/keywords)
+- [x] Location path returned in search results
+- [x] Siri endpoint: `GET /api/items/lookup?q=`
+- [x] Siri alias endpoint: `GET /shortcut/find-item?q=`
+- [x] Export endpoint: `GET /export/inventory`
+- [x] Import endpoint: `POST /import/inventory`
+- [x] Contract tests for search, Siri, update/delete, export/import
 
-### Tickets
+### Phase 4 — Product MVP UI
+- [x] Global search UI
+- [x] Quick create location/item forms
+- [x] Move item UI from search results
+- [x] Recursive interactive tree + text tree view
+- [x] Location editor (update/delete)
+- [x] Item editor (update/delete)
+- [x] Dev seed button wired to backend (`POST /dev/seed`)
 
-* [ ] Create `locations` table
-
-  * id (uuid, PK)
-  * name (text)
-  * code (text, optional)
-  * type (text, optional)
-  * parent_id (uuid, FK self-reference)
-  * description (text)
-  * image_url (text)
-  * created_at
-  * updated_at
-
-* [ ] Add index on `parent_id`
-
-* [ ] Add index on `code`
-
-* [ ] Create migration
-
-Definition of Done:
-
-* Locations can be inserted manually
-* Parent-child relationships work
-
----
-
-## 1.2 Items Table
-
-### Tickets
-
-* [ ] Create `items` table
-
-  * id (uuid, PK)
-  * name (text)
-  * brand (text)
-  * description (text)
-  * keywords (text[] or json)
-  * location_id (uuid FK)
-  * low_churn (boolean default true)
-  * image_url (text)
-  * created_at
-  * updated_at
-
-* [ ] Add index on `location_id`
-
-* [ ] Add GIN index on `keywords`
-
-Definition of Done:
-
-* Items can be inserted and linked to locations
+### Phase 5 — Photo Support (partial)
+- [x] `image_url` persisted/updated for locations and items
+- [x] Image URL fields in create/edit forms
+- [x] Thumbnail rendering in search results and tree items
 
 ---
 
-# Phase 2 — Core API Layer
+## 2) Remaining MVP Gap
 
-## Goal
+These are the remaining tasks to consider MVP fully hardened for solo/household use.
 
-Enable CRUD operations for locations and items.
+### Platform / Ops
+- [x] Decide hosting target (AWS stack vs Vercel/Supabase)
+- [x] Add baseline lint/format config and CI checks
+- [x] Add deployment checklist (env vars, DB migration runbook, backup schedule)
 
----
+### Data / Quality
+- [x] Add migration test for unique `locations.code`
+- [x] Expand API tests to include location path endpoint and delete edge cases
+- [x] Add test for `/dev/seed` gating behavior (`ENABLE_DEV_ROUTES`)
 
-## 2.1 Location Endpoints
+### API / UX
+- [x] Document Siri Shortcut setup flow clearly (step-by-step)
+- [x] Add breadcrumb display in the interactive explorer (UI-level)
+- [x] Standardize response envelopes if desired (currently mixed direct object/list responses)
 
-### Tickets
+### Backup / Safety
+- [x] Add import dry-run mode (`validate_only=true`)
+- [x] Add optional id remap mode for merging into non-empty inventories (future-safe)
 
-* [ ] POST /locations (create)
-* [ ] GET /locations/tree (recursive retrieval)
-* [ ] PATCH /locations/:id (rename / move)
-* [ ] DELETE /locations/:id (validation required)
-
-Validation Rules:
-
-* Cannot delete location with children or items
-
-Definition of Done:
-
-* Tree can be fetched and rendered
-* Parent can be updated (container move supported)
-
----
-
-## 2.2 Item Endpoints
-
-### Tickets
-
-* [ ] POST /items
-* [ ] GET /items/:id
-* [ ] PATCH /items/:id
-* [ ] DELETE /items/:id
-
-Definition of Done:
-
-* Items can be created, edited, moved, deleted
+### Photo Support (to complete Phase 5)
+- [x] Add direct file upload for item/location images
+- [x] Add storage integration (S3/Supabase/Cloudinary)
+- [ ] Add server-side thumbnail generation pipeline
 
 ---
 
-# Phase 3 — Basic Search (MVP Complete)
+## 3) Post-MVP Backlog
 
-## Goal
+### Phase 6 — Container Movement Optimization
+- [ ] Location move confirmation UX and bulk impact visibility
+- [ ] Optional move preview (before/after path for affected items)
 
-Instantly find items via keyword search.
+### Phase 7 — Semantic Search
+- [ ] Add embeddings column/store
+- [ ] Generate embeddings on create/update
+- [ ] Similarity query + ranking
 
----
+### Phase 8 — Natural Language Interface
+- [ ] Chat-style query input
+- [ ] Retrieval + response formatting for conversational lookup
 
-### Tickets
+### Phase 9 — Movement History
+- [ ] `movement_history` table
+- [ ] Item move event logging
+- [ ] History view in UI
 
-* [ ] Implement search endpoint: GET /items/search?q=
-* [ ] Use ILIKE on:
-
-  * name
-  * brand
-  * description
-  * keywords
-* [ ] Return item + full location path
-
-Optional Enhancement:
-
-* Add PostgreSQL full-text search
-
-Definition of Done:
-
-* Searching "winter" returns relevant items
-* Results display full breadcrumb path
-
-MVP COMPLETE at end of Phase 3
+### Phase 10 — Physical-Digital Sync
+- [ ] QR generation for locations
+- [ ] Scan-to-view experience
+- [ ] Verification mode for expected vs actual inventory
 
 ---
 
-# Phase 4 — Frontend MVP UI
-
-## Goal
-
-Deliver usable interface.
-
----
-
-## 4.1 Dashboard
-
-### Tickets
-
-* [ ] Global search bar
-* [ ] Quick add item button
-* [ ] Quick add location button
-
----
-
-## 4.2 Location Explorer
-
-### Tickets
-
-* [ ] Recursive tree component
-* [ ] Expand/collapse nodes
-* [ ] Display items in selected node
-* [ ] Breadcrumb navigation
-
----
-
-## 4.3 Item Detail Page
-
-### Tickets
-
-* [ ] View item metadata
-* [ ] Display location path
-* [ ] Move item dropdown
-* [ ] Edit metadata
-
-Definition of Done:
-
-* User can search and locate items visually
-* User can move items easily
-
----
-
-# Phase 5 — Photo Support
-
-## Goal
-
-Add visual reinforcement to system.
-
----
-
-### Tickets
-
-* [ ] Enable image upload for items
-* [ ] Enable image upload for locations
-* [ ] Generate thumbnails
-* [ ] Store URL in DB
-
-Definition of Done:
-
-* Items and locations can display photos
-
----
-
-# Phase 6 — Container Movement Optimization
-
-## Goal
-
-Efficiently move boxes without touching items.
-
----
-
-### Tickets
-
-* [ ] Ensure moving a location updates only parent_id
-* [ ] Confirm items inherit new effective path
-* [ ] Add confirmation modal for location move
-
-Definition of Done:
-
-* Moving a box updates all contained items logically
-
----
-
-# Phase 7 — Semantic Search (LLM-Ready Layer)
-
-## Goal
-
-Allow natural language item discovery.
-
----
-
-### Tickets
-
-* [ ] Add embedding column to items table
-* [ ] Generate embeddings on item create/update
-* [ ] Store vector in DB
-* [ ] Create similarity search query
-* [ ] Rank results by cosine similarity
-
-Definition of Done:
-
-* Query "green tire inflator" returns correct compressor
-
----
-
-# Phase 8 — Natural Language Query Interface
-
-## Goal
-
-Conversational lookup experience.
-
----
-
-### Tickets
-
-* [ ] Add chat-style input component
-* [ ] Embed user query
-* [ ] Retrieve top N similar items
-* [ ] Return ranked suggestions
-* [ ] Optional: LLM response formatting
-
-Definition of Done:
-
-* User can type conversational query
-* System returns likely matches
-
----
-
-# Phase 9 — Movement History (Optional Advanced)
-
-## Goal
-
-Track item relocation events.
-
----
-
-### Tickets
-
-* [ ] Create movement_history table
-* [ ] Log item moves
-* [ ] Add "view history" button
-
-Definition of Done:
-
-* Past locations are visible per item
-
----
-
-# Phase 10 — Physical-Digital Sync (Optional Advanced)
-
-## Goal
-
-Reduce entropy in real-world organization.
-
----
-
-### Tickets
-
-* [ ] Generate QR codes for locations
-* [ ] Add scan-to-view functionality
-* [ ] Display expected inventory per location
-* [ ] Add verification mode
-
-Definition of Done:
-
-* Scanning a zone shows its contents
-
----
-
-# Final Milestones Summary
-
-Milestone 1: Backend Complete (Phase 1–3)
-Milestone 2: Usable App (Phase 4)
-Milestone 3: Visual + Efficient Movement (Phase 5–6)
-Milestone 4: Intelligent Search (Phase 7–8)
-Milestone 5: Advanced Control System (Phase 9–10)
-
----
-
-# Recommended Build Order
-
-If building solo:
-
-1. Phase 0
-2. Phase 1
-3. Phase 2
-4. Phase 3  → STOP and test with real items
-5. Phase 4
-6. Phase 5
-7. Phase 6
-8. Phase 7+
-
-Test with real household data early to validate friction.
+## Milestones
+
+- Milestone A: Backend MVP Complete (Phases 1–3)
+- Milestone B: Product MVP Usable (Phase 4)
+- Milestone C: Photo Workflow Complete (Phase 5)
+- Milestone D: Intelligent Search (Phases 7–8)
+- Milestone E: Advanced Control System (Phases 9–10)
 
 ---
 

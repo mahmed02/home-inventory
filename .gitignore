@@ -1,0 +1,8 @@
+node_modules/
+api/node_modules/
+api/dist/
+.env
+api/.env
+api/.env.test
+.DS_Store
+keys/

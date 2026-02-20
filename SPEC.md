@@ -53,6 +53,7 @@ House, Room, Zone, Shelf, Box, Container, etc.
 * Tree implemented using adjacency list pattern.
 * No hard enforcement of structure depth.
 * Root node example: "House".
+* `code` must be globally unique when present (DB unique index + API validation).
 
 ---
 
@@ -64,7 +65,7 @@ House, Room, Zone, Shelf, Box, Container, etc.
 * name (text, required)
 * brand (text, optional)
 * description (text, optional)
-* keywords (text[] or JSON array)
+* keywords (text[])
 * location_id (uuid, FK to locations.id)
 * low_churn (boolean, default true)
 * image_url (text, optional)
@@ -112,7 +113,8 @@ House, Room, Zone, Shelf, Box, Container, etc.
 
 * Expand/collapse UI
 * Breadcrumb navigation
-* Recursive query support
+* Recursive query support (PostgreSQL recursive CTEs for tree and breadcrumb path)
+* Parent changes must reject cycles (a location cannot move under itself or its descendants)
 
 ---
 
@@ -180,6 +182,7 @@ If a box moves:
 
 * POST /locations
 * GET /locations/tree
+* GET /locations/:id/path
 * PATCH /locations/:id
 * DELETE /locations/:id
 
@@ -187,9 +190,19 @@ If a box moves:
 
 * POST /items
 * GET /items/:id
+* GET /items?location_id=&limit=&offset=
 * PATCH /items/:id
 * DELETE /items/:id
 * GET /items/search?q=
+* GET /shortcut/find-item?q=
+
+### API Behavior (MVP)
+
+* Validate unique `locations.code` on create and rename (`409 Conflict` on duplicates)
+* Validate location moves for cycle prevention (`400 Bad Request` on invalid parent)
+* `GET /items/search` and `GET /items` support pagination via `limit` and `offset`
+* `GET /shortcut/find-item?q=` returns top match with concise location path for Siri Shortcuts
+* Deletion is hard delete in MVP; location delete allowed only when it has no children and no items
 
 ---
 
@@ -315,6 +328,7 @@ Optional:
 * Fast search response (<200ms target)
 * Minimal friction for item movement
 * Mobile-friendly UI
+* Siri Shortcut lookup response should be concise and stable
 * Offline-tolerant design (optional future)
 
 ---

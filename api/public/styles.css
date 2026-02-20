@@ -1,0 +1,295 @@
+:root {
+  --bg: #f2f4f1;
+  --panel: #ffffff;
+  --ink: #1c2a24;
+  --muted: #5a6a62;
+  --accent: #0f7a55;
+  --danger: #a53f2b;
+  --border: #d8dfdb;
+  --select: #e6f4ee;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at top right, #dbeee2, var(--bg));
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+header {
+  margin-bottom: 18px;
+}
+
+header p {
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.stack {
+  display: grid;
+  gap: 8px;
+}
+
+.search-row {
+  display: flex;
+  gap: 8px;
+}
+
+input,
+select,
+button {
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid #b9c6bf;
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+input {
+  width: 100%;
+}
+
+button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(0.95);
+}
+
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+
+.upload-row {
+  display: flex;
+  gap: 8px;
+}
+
+.upload-row input[type="file"] {
+  height: auto;
+  padding: 8px 10px;
+  background: #fff;
+  flex: 1;
+}
+
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.inline-check input {
+  width: auto;
+  height: auto;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.actions-row {
+  display: flex;
+  gap: 8px;
+}
+
+#meta,
+.hint,
+.status {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.crumb {
+  margin: 6px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: Menlo, Monaco, monospace;
+}
+
+.results {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.result {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fcfdfc;
+}
+
+.result-title {
+  font-weight: 700;
+}
+
+.result-main {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: #eef2ef;
+}
+
+.result-path {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.move-row {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.move-row select {
+  flex: 1;
+}
+
+.tree-view {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfcfb;
+  padding: 8px;
+  min-height: 120px;
+}
+
+.tree-list {
+  list-style: none;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.tree-node,
+.tree-item {
+  margin: 4px 0;
+}
+
+.tree-label,
+.item-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tree-label:hover,
+.item-label:hover {
+  background: #edf4ef;
+}
+
+.tree-label.selected,
+.item-label.selected {
+  background: var(--select);
+  border: 1px solid #bdd9ca;
+}
+
+.item-tag {
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.tree-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: #eef2ef;
+}
+
+.tree {
+  margin: 10px 0 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfcfb;
+  min-height: 120px;
+  overflow: auto;
+  font-family: Menlo, Monaco, monospace;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.status {
+  min-height: 20px;
+}
+
+@media (max-width: 860px) {
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .search-row,
+  .move-row,
+  .button-row,
+  .upload-row {
+    flex-direction: column;
+  }
+
+  .panel-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
