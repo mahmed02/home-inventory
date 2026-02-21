@@ -15,11 +15,9 @@ export type LocationRow = {
 export type ItemRow = {
   id: string;
   name: string;
-  brand: string | null;
   description: string | null;
   keywords: string[];
   location_id: string;
-  low_churn: boolean;
   image_url: string | null;
   created_at: string;
   updated_at: string;

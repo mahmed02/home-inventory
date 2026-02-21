@@ -366,7 +366,6 @@ test("PATCH/DELETE item flow works end-to-end", async () => {
     method: "POST",
     body: {
       name: "Impact Driver",
-      brand: "Milwaukee",
       keywords: ["tool", "driver"],
       location_id: garageId,
     },
@@ -380,19 +379,16 @@ test("PATCH/DELETE item flow works end-to-end", async () => {
       name: "Impact Driver M18",
       location_id: basementId,
       keywords: ["tool", "driver", "m18"],
-      low_churn: false,
     },
   });
   assert.equal(updated.status, 200);
   const updatedJson = updated.json as {
     name: string;
     location_id: string;
-    low_churn: boolean;
     keywords: string[];
   };
   assert.equal(updatedJson.name, "Impact Driver M18");
   assert.equal(updatedJson.location_id, basementId);
-  assert.equal(updatedJson.low_churn, false);
   assert.deepEqual(updatedJson.keywords, ["tool", "driver", "m18"]);
 
   const deleted = await request(`/items/${itemId}`, { method: "DELETE" });
@@ -634,11 +630,9 @@ test("POST /import/inventory?remap_ids=true merges payload into non-empty invent
         {
           id: "22222222-2222-4222-8222-222222222222",
           name: "Compressor",
-          brand: "Ryobi",
           description: "Green",
           keywords: ["air", "compressor"],
           location_id: "11111111-1111-4111-8111-111111111111",
-          low_churn: true,
           image_url: null,
           created_at: "2026-01-01T00:00:00.000Z",
           updated_at: "2026-01-01T00:00:00.000Z",

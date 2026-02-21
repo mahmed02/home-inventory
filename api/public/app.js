@@ -29,7 +29,6 @@ const uploadLocImageBtn = document.getElementById("uploadLocImageBtn");
 const locParentSelect = document.getElementById("locParentId");
 
 const itemNameInput = document.getElementById("itemName");
-const itemBrandInput = document.getElementById("itemBrand");
 const itemDescriptionInput = document.getElementById("itemDescription");
 const itemKeywordsInput = document.getElementById("itemKeywords");
 const itemImageUrlInput = document.getElementById("itemImageUrl");
@@ -48,14 +47,12 @@ const editLocParentSelect = document.getElementById("editLocParentId");
 const deleteLocationBtn = document.getElementById("deleteLocationBtn");
 
 const editItemNameInput = document.getElementById("editItemName");
-const editItemBrandInput = document.getElementById("editItemBrand");
 const editItemDescriptionInput = document.getElementById("editItemDescription");
 const editItemKeywordsInput = document.getElementById("editItemKeywords");
 const editItemImageUrlInput = document.getElementById("editItemImageUrl");
 const editItemImageFileInput = document.getElementById("editItemImageFile");
 const uploadEditItemImageBtn = document.getElementById("uploadEditItemImageBtn");
 const editItemLocationSelect = document.getElementById("editItemLocationId");
-const editItemLowChurnInput = document.getElementById("editItemLowChurn");
 const deleteItemBtn = document.getElementById("deleteItemBtn");
 
 let flatLocations = [];
@@ -382,11 +379,9 @@ function selectItem(itemId) {
   itemBreadcrumbEl.textContent = `Path: ${itemPathMap.get(item.id) || item.name}`;
 
   editItemNameInput.value = item.name || "";
-  editItemBrandInput.value = item.brand || "";
   editItemDescriptionInput.value = item.description || "";
   editItemKeywordsInput.value = (item.keywords || []).join(", ");
   editItemImageUrlInput.value = item.image_url || "";
-  editItemLowChurnInput.checked = Boolean(item.low_churn);
 
   syncLocationSelectors();
   editItemLocationSelect.value = item.location_id || "";
@@ -593,7 +588,6 @@ createItemForm.addEventListener("submit", async (event) => {
 
   const payload = {
     name: itemNameInput.value.trim(),
-    brand: itemBrandInput.value.trim() || null,
     description: itemDescriptionInput.value.trim() || null,
     keywords: parseKeywords(itemKeywordsInput.value),
     image_url: itemImageUrlInput.value.trim() || null,
@@ -662,12 +656,10 @@ editItemForm.addEventListener("submit", async (event) => {
 
   const payload = {
     name: editItemNameInput.value.trim(),
-    brand: editItemBrandInput.value.trim() || null,
     description: editItemDescriptionInput.value.trim() || null,
     keywords: parseKeywords(editItemKeywordsInput.value),
     image_url: editItemImageUrlInput.value.trim() || null,
     location_id: editItemLocationSelect.value,
-    low_churn: editItemLowChurnInput.checked,
   };
 
   if (!payload.name || !payload.location_id) {

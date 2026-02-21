@@ -43,7 +43,7 @@ This version tracks implementation in three views:
 - [x] Shared validation/error helper modules
 
 ### Phase 3 — Search + Siri + Backup
-- [x] `GET /items/search?q=&limit=&offset=` (ILIKE over name/brand/description/keywords)
+- [x] `GET /items/search?q=&limit=&offset=` (ILIKE over name/description/keywords)
 - [x] Location path returned in search results
 - [x] Siri endpoint: `GET /api/items/lookup?q=`
 - [x] Siri alias endpoint: `GET /shortcut/find-item?q=`

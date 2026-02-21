@@ -20,7 +20,6 @@ async function insertItem(
   client: PoolClient,
   params: {
     name: string;
-    brand?: string;
     description?: string;
     keywords: string[];
     locationId: string;
@@ -28,12 +27,11 @@ async function insertItem(
 ): Promise<void> {
   await client.query(
     `
-    INSERT INTO items(name, brand, description, keywords, location_id)
-    VALUES ($1, $2, $3, $4::text[], $5)
+    INSERT INTO items(name, description, keywords, location_id)
+    VALUES ($1, $2, $3::text[], $4)
     `,
     [
       params.name,
-      params.brand ?? null,
       params.description ?? null,
       params.keywords,
       params.locationId,
@@ -98,7 +96,6 @@ export async function seedInventoryData(): Promise<void> {
 
     await insertItem(client, {
       name: "Ryobi Air Compressor",
-      brand: "Ryobi",
       description: "Green, under tarp",
       keywords: ["compressor", "air", "green"],
       locationId: garageShelf2Id,
@@ -106,7 +103,6 @@ export async function seedInventoryData(): Promise<void> {
 
     await insertItem(client, {
       name: "Tire Inflator",
-      brand: "Milwaukee",
       description: "12V inflator",
       keywords: ["inflator", "tire", "air"],
       locationId: garageShelf2Id,

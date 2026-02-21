@@ -63,11 +63,9 @@ House, Room, Zone, Shelf, Box, Container, etc.
 
 * id (uuid, primary key)
 * name (text, required)
-* brand (text, optional)
 * description (text, optional)
 * keywords (text[])
 * location_id (uuid, FK to locations.id)
-* low_churn (boolean, default true)
 * image_url (text, optional)
 * created_at (timestamp)
 * updated_at (timestamp)
@@ -75,7 +73,6 @@ House, Room, Zone, Shelf, Box, Container, etc.
 ### Searchable Fields
 
 * name
-* brand
 * description
 * keywords
 
@@ -137,7 +134,6 @@ House, Room, Zone, Shelf, Box, Container, etc.
 * Match against:
 
   * name
-  * brand
   * keywords
   * description
 

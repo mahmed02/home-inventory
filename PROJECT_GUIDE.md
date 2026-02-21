@@ -77,10 +77,9 @@ Represents things you store.
 Important columns:
 - `id` (uuid)
 - `name`
-- `description`, `brand`
+- `description`
 - `keywords` (`text[]`)
 - `location_id` (which location currently contains item)
-- `low_churn` (true/false)
 - `image_url`
 - `created_at`, `updated_at`
 

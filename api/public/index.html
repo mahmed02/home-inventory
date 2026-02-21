@@ -52,7 +52,6 @@
           <h2>Create Item</h2>
           <form id="createItemForm" class="stack">
             <input id="itemName" type="text" placeholder="Name" required />
-            <input id="itemBrand" type="text" placeholder="Brand (optional)" />
             <input id="itemDescription" type="text" placeholder="Description (optional)" />
             <input id="itemKeywords" type="text" placeholder="Keywords comma-separated" />
             <input id="itemImageUrl" type="url" placeholder="Image URL (optional)" />
@@ -99,7 +98,6 @@
           <p id="itemBreadcrumb" class="crumb"></p>
           <form id="editItemForm" class="stack" hidden>
             <input id="editItemName" type="text" placeholder="Name" required />
-            <input id="editItemBrand" type="text" placeholder="Brand" />
             <input id="editItemDescription" type="text" placeholder="Description" />
             <input id="editItemKeywords" type="text" placeholder="Keywords comma-separated" />
             <input id="editItemImageUrl" type="url" placeholder="Image URL" />
@@ -110,10 +108,6 @@
             <select id="editItemLocationId" required>
               <option value="">Select location</option>
             </select>
-            <label class="inline-check">
-              <input id="editItemLowChurn" type="checkbox" />
-              Low churn
-            </label>
             <div class="button-row">
               <button type="submit">Update Item</button>
               <button type="button" id="deleteItemBtn" class="danger">Delete Item</button>

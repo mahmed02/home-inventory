@@ -7,10 +7,8 @@ type InventoryNode = LocationRow & {
   items: Array<{
     id: string;
     name: string;
-    brand: string | null;
     description: string | null;
     keywords: string[];
-    low_churn: boolean;
     image_url: string | null;
     location_id: string;
     created_at: string;
@@ -55,10 +53,8 @@ inventoryRouter.get("/inventory/tree", async (_req, res) => {
       location.items.push({
         id: item.id,
         name: item.name,
-        brand: item.brand,
         description: item.description,
         keywords: item.keywords,
-        low_churn: item.low_churn,
         image_url: item.image_url,
         location_id: item.location_id,
         created_at: item.created_at,

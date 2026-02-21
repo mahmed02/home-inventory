@@ -29,12 +29,10 @@ function dbError(error: unknown, res: Response) {
 
 itemsRouter.post("/items", async (req, res) => {
   const name = asRequiredText(req.body.name);
-  const brand = asOptionalText(req.body.brand);
   const description = asOptionalText(req.body.description);
   const imageUrl = asOptionalText(req.body.image_url);
   const locationId = asRequiredUuid(req.body.location_id);
   const keywords = asKeywords(req.body.keywords) ?? [];
-  const lowChurn = typeof req.body.low_churn === "boolean" ? req.body.low_churn : true;
 
   if (!name || locationId === "INVALID") {
     return sendValidationError(res, "name and location_id are required");
@@ -43,11 +41,11 @@ itemsRouter.post("/items", async (req, res) => {
   try {
     const result = await pool.query<ItemRow>(
       `
-      INSERT INTO items(name, brand, description, keywords, location_id, low_churn, image_url)
-      VALUES ($1, $2, $3, $4::text[], $5, $6, $7)
+      INSERT INTO items(name, description, keywords, location_id, image_url)
+      VALUES ($1, $2, $3::text[], $4, $5)
       RETURNING *
       `,
-      [name, brand, description, keywords, locationId, lowChurn, imageUrl]
+      [name, description, keywords, locationId, imageUrl]
     );
 
     return res.status(201).json(result.rows[0]);
@@ -130,10 +128,6 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     updates.push({ key: "name", value: name });
   }
 
-  if ("brand" in req.body) {
-    updates.push({ key: "brand", value: normalizeOptionalText(req.body.brand) });
-  }
-
   if ("description" in req.body) {
     updates.push({ key: "description", value: normalizeOptionalText(req.body.description) });
   }
@@ -155,13 +149,6 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
       return sendValidationError(res, "location_id must be UUID");
     }
     updates.push({ key: "location_id", value: locationId });
-  }
-
-  if ("low_churn" in req.body) {
-    if (typeof req.body.low_churn !== "boolean") {
-      return sendValidationError(res, "low_churn must be boolean");
-    }
-    updates.push({ key: "low_churn", value: req.body.low_churn });
   }
 
   if ("image_url" in req.body) {
@@ -250,7 +237,6 @@ itemsRouter.get("/items/search", async (req, res) => {
         JOIN location_paths lp ON lp.id = i.location_id
         WHERE
           i.name ILIKE $1 OR
-          COALESCE(i.brand, '') ILIKE $1 OR
           COALESCE(i.description, '') ILIKE $1 OR
           array_to_string(i.keywords, ' ') ILIKE $1
       )

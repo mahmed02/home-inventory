@@ -117,18 +117,16 @@ async function insertImportData(
     await client.query(
       `
       INSERT INTO items(
-        id, name, brand, description, keywords, location_id, low_churn, image_url, created_at, updated_at
+        id, name, description, keywords, location_id, image_url, created_at, updated_at
       )
-      VALUES ($1,$2,$3,$4,$5::text[],$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8)
       `,
       [
         row.id,
         row.name,
-        row.brand,
         row.description,
         row.keywords,
         row.location_id,
-        row.low_churn,
         row.image_url,
         row.created_at,
         row.updated_at,
@@ -168,18 +166,16 @@ async function mergeImportData(
     await client.query(
       `
       INSERT INTO items(
-        id, name, brand, description, keywords, location_id, low_churn, image_url, created_at, updated_at
+        id, name, description, keywords, location_id, image_url, created_at, updated_at
       )
-      VALUES ($1,$2,$3,$4,$5::text[],$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8)
       `,
       [
         row.id,
         row.name,
-        row.brand,
         row.description,
         row.keywords,
         row.location_id,
-        row.low_churn,
         row.image_url,
         row.created_at,
         row.updated_at,

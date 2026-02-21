@@ -30,15 +30,13 @@ async function lookupTopItem(q: string): Promise<{ item: string | null; location
       i.description AS notes,
       CASE
         WHEN i.name ILIKE $1 THEN 1
-        WHEN COALESCE(i.brand, '') ILIKE $1 THEN 2
-        WHEN array_to_string(i.keywords, ' ') ILIKE $1 THEN 3
-        ELSE 4
+        WHEN array_to_string(i.keywords, ' ') ILIKE $1 THEN 2
+        ELSE 3
       END AS rank
     FROM items i
     JOIN location_paths lp ON lp.id = i.location_id
     WHERE
       i.name ILIKE $1 OR
-      COALESCE(i.brand, '') ILIKE $1 OR
       COALESCE(i.description, '') ILIKE $1 OR
       array_to_string(i.keywords, ' ') ILIKE $1
     ORDER BY rank ASC, i.name ASC
