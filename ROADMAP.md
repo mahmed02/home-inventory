@@ -58,6 +58,7 @@ This version tracks implementation in three views:
 - [x] Recursive interactive tree + text tree view
 - [x] Location editor (update/delete)
 - [x] Item editor (update/delete)
+- [x] Modal action launcher (`+`) for create/edit flows
 - [x] Dev seed button wired to backend (`POST /dev/seed`)
 
 ### Phase 5 — Photo Support (partial)

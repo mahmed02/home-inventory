@@ -9,6 +9,18 @@ const treeTextEl = document.getElementById("treeText");
 const treeMetaEl = document.getElementById("treeMeta");
 const refreshTreeBtn = document.getElementById("refreshTreeBtn");
 const seedBtn = document.getElementById("seedBtn");
+const openCreateActionsBtn = document.getElementById("openCreateActionsBtn");
+const openEditLocationBtn = document.getElementById("openEditLocationBtn");
+const openEditItemBtn = document.getElementById("openEditItemBtn");
+const selectionHintEl = document.getElementById("selectionHint");
+const actionCreateLocationBtn = document.getElementById("actionCreateLocationBtn");
+const actionCreateItemBtn = document.getElementById("actionCreateItemBtn");
+
+const createActionsModal = document.getElementById("createActionsModal");
+const createLocationModal = document.getElementById("createLocationModal");
+const createItemModal = document.getElementById("createItemModal");
+const editLocationModal = document.getElementById("editLocationModal");
+const editItemModal = document.getElementById("editItemModal");
 
 const createLocationForm = document.getElementById("createLocationForm");
 const createItemForm = document.getElementById("createItemForm");
@@ -63,9 +75,64 @@ let locationPathMap = new Map();
 let itemPathMap = new Map();
 let selectedLocationId = null;
 let selectedItemId = null;
+const allModals = [
+  createActionsModal,
+  createLocationModal,
+  createItemModal,
+  editLocationModal,
+  editItemModal,
+];
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function updateActionState() {
+  openEditLocationBtn.disabled = !selectedLocationId;
+  openEditItemBtn.disabled = !selectedItemId;
+
+  if (selectedLocationId) {
+    const location = locationMap.get(selectedLocationId);
+    selectionHintEl.textContent = location
+      ? `Selected location: ${location.name}`
+      : "Select a location or item in the tree to edit.";
+    return;
+  }
+
+  if (selectedItemId) {
+    const item = itemMap.get(selectedItemId);
+    selectionHintEl.textContent = item
+      ? `Selected item: ${item.name}`
+      : "Select a location or item in the tree to edit.";
+    return;
+  }
+
+  selectionHintEl.textContent = "Select a location or item in the tree to edit.";
+}
+
+function openModal(modalEl) {
+  if (!modalEl) {
+    return;
+  }
+  modalEl.hidden = false;
+  document.body.classList.add("modal-open");
+}
+
+function closeModal(modalEl) {
+  if (!modalEl) {
+    return;
+  }
+  modalEl.hidden = true;
+  if (allModals.every((modal) => modal.hidden)) {
+    document.body.classList.remove("modal-open");
+  }
+}
+
+function closeAllModals() {
+  allModals.forEach((modal) => {
+    modal.hidden = true;
+  });
+  document.body.classList.remove("modal-open");
 }
 
 async function fetchJson(path, options) {
@@ -325,6 +392,7 @@ function hideEditors() {
   itemEditorHint.textContent = "Select an item in the tree.";
   locationBreadcrumbEl.textContent = "";
   itemBreadcrumbEl.textContent = "";
+  updateActionState();
 
   renderTree();
 }
@@ -354,6 +422,7 @@ function selectLocation(locationId) {
 
   editLocParentSelect.dataset.current = location.parent_id || "";
   syncLocationSelectors();
+  updateActionState();
 
   renderTree();
 }
@@ -385,6 +454,7 @@ function selectItem(itemId) {
 
   syncLocationSelectors();
   editItemLocationSelect.value = item.location_id || "";
+  updateActionState();
 
   renderTree();
 }
@@ -433,6 +503,7 @@ async function refreshInventoryTree() {
     return;
   }
 
+  updateActionState();
   renderTree();
 }
 
@@ -553,6 +624,58 @@ treeViewEl.addEventListener("click", (event) => {
   }
 });
 
+openCreateActionsBtn.addEventListener("click", () => {
+  openModal(createActionsModal);
+});
+
+actionCreateLocationBtn.addEventListener("click", () => {
+  closeModal(createActionsModal);
+  openModal(createLocationModal);
+});
+
+actionCreateItemBtn.addEventListener("click", () => {
+  closeModal(createActionsModal);
+  openModal(createItemModal);
+});
+
+openEditLocationBtn.addEventListener("click", () => {
+  if (!selectedLocationId) {
+    setStatus("Select a location in the tree first.");
+    return;
+  }
+  openModal(editLocationModal);
+});
+
+openEditItemBtn.addEventListener("click", () => {
+  if (!selectedItemId) {
+    setStatus("Select an item in the tree first.");
+    return;
+  }
+  openModal(editItemModal);
+});
+
+document.querySelectorAll("[data-modal-close]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const modalId = button.getAttribute("data-modal-close");
+    const modal = modalId ? document.getElementById(modalId) : null;
+    closeModal(modal);
+  });
+});
+
+allModals.forEach((modal) => {
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) {
+      closeModal(modal);
+    }
+  });
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeAllModals();
+  }
+});
+
 createLocationForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -577,6 +700,7 @@ createLocationForm.addEventListener("submit", async (event) => {
 
     createLocationForm.reset();
     await refreshAll();
+    closeModal(createLocationModal);
     setStatus("Location created.");
   } catch (error) {
     setStatus(error.message);
@@ -607,6 +731,7 @@ createItemForm.addEventListener("submit", async (event) => {
 
     createItemForm.reset();
     await refreshAll();
+    closeModal(createItemModal);
     setStatus("Item created.");
   } catch (error) {
     setStatus(error.message);
@@ -641,6 +766,7 @@ editLocationForm.addEventListener("submit", async (event) => {
     });
     await refreshAll();
     selectLocation(selectedLocationId);
+    closeModal(editLocationModal);
     setStatus("Location updated.");
   } catch (error) {
     setStatus(error.message);
@@ -674,6 +800,7 @@ editItemForm.addEventListener("submit", async (event) => {
     });
     await refreshAll();
     selectItem(selectedItemId);
+    closeModal(editItemModal);
     setStatus("Item updated.");
   } catch (error) {
     setStatus(error.message);
@@ -695,6 +822,7 @@ deleteLocationBtn.addEventListener("click", async () => {
     await fetchJson(`/locations/${selectedLocationId}`, { method: "DELETE" });
     hideEditors();
     await refreshAll();
+    closeModal(editLocationModal);
     setStatus("Location deleted.");
   } catch (error) {
     setStatus(error.message);
@@ -716,6 +844,7 @@ deleteItemBtn.addEventListener("click", async () => {
     await fetchJson(`/items/${selectedItemId}`, { method: "DELETE" });
     hideEditors();
     await refreshAll();
+    closeModal(editItemModal);
     setStatus("Item deleted.");
   } catch (error) {
     setStatus(error.message);
@@ -782,6 +911,7 @@ window.addEventListener("load", async () => {
   try {
     hideEditors();
     await refreshAll();
+    updateActionState();
     setStatus("Ready.");
   } catch (error) {
     setStatus(`Startup error: ${error.message}`);
