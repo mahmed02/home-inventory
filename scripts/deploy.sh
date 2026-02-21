@@ -7,6 +7,9 @@ PROCESS_NAME="${PROCESS_NAME:-home-inventory-api}"
 
 cd "$APP_DIR"
 
+echo "[deploy] Marking repo as safe directory for non-interactive runners"
+git config --global --add safe.directory "$APP_DIR" || true
+
 echo "[deploy] Fetching repository updates"
 git fetch --all --prune
 
