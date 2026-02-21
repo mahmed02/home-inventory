@@ -10,8 +10,7 @@ const treeMetaEl = document.getElementById("treeMeta");
 const refreshTreeBtn = document.getElementById("refreshTreeBtn");
 const seedBtn = document.getElementById("seedBtn");
 const openCreateActionsBtn = document.getElementById("openCreateActionsBtn");
-const openEditLocationBtn = document.getElementById("openEditLocationBtn");
-const openEditItemBtn = document.getElementById("openEditItemBtn");
+const openEditBtn = document.getElementById("openEditBtn");
 const selectionHintEl = document.getElementById("selectionHint");
 const actionCreateLocationBtn = document.getElementById("actionCreateLocationBtn");
 const actionCreateItemBtn = document.getElementById("actionCreateItemBtn");
@@ -21,6 +20,9 @@ const createLocationModal = document.getElementById("createLocationModal");
 const createItemModal = document.getElementById("createItemModal");
 const editLocationModal = document.getElementById("editLocationModal");
 const editItemModal = document.getElementById("editItemModal");
+const imageLightboxModal = document.getElementById("imageLightboxModal");
+const imageLightboxImg = document.getElementById("imageLightboxImg");
+const imageLightboxCaption = document.getElementById("imageLightboxCaption");
 
 const createLocationForm = document.getElementById("createLocationForm");
 const createItemForm = document.getElementById("createItemForm");
@@ -81,6 +83,7 @@ const allModals = [
   createItemModal,
   editLocationModal,
   editItemModal,
+  imageLightboxModal,
 ];
 
 function setStatus(message) {
@@ -88,14 +91,15 @@ function setStatus(message) {
 }
 
 function updateActionState() {
-  openEditLocationBtn.disabled = !selectedLocationId;
-  openEditItemBtn.disabled = !selectedItemId;
+  const hasSelection = Boolean(selectedLocationId || selectedItemId);
+  openEditBtn.disabled = !hasSelection;
 
   if (selectedLocationId) {
     const location = locationMap.get(selectedLocationId);
     selectionHintEl.textContent = location
       ? `Selected location: ${location.name}`
       : "Select a location or item in the tree to edit.";
+    openEditBtn.textContent = "Edit Location";
     return;
   }
 
@@ -104,10 +108,12 @@ function updateActionState() {
     selectionHintEl.textContent = item
       ? `Selected item: ${item.name}`
       : "Select a location or item in the tree to edit.";
+    openEditBtn.textContent = "Edit Item";
     return;
   }
 
   selectionHintEl.textContent = "Select a location or item in the tree to edit.";
+  openEditBtn.textContent = "Edit Selected";
 }
 
 function openModal(modalEl) {
@@ -133,6 +139,16 @@ function closeAllModals() {
     modal.hidden = true;
   });
   document.body.classList.remove("modal-open");
+}
+
+function openImageLightbox(imageUrl, caption = "") {
+  if (!imageUrl) {
+    return;
+  }
+  imageLightboxImg.src = imageUrl;
+  imageLightboxImg.alt = caption || "Image preview";
+  imageLightboxCaption.textContent = caption;
+  openModal(imageLightboxModal);
 }
 
 async function fetchJson(path, options) {
@@ -348,7 +364,11 @@ function buildTreeHtml(nodes) {
       children.push(`
         <li class="tree-item">
           <span class="item-label${itemSelected}" data-item-id="${item.id}">
-            ${item.image_url ? `<img class="tree-thumb" src="${item.image_url}" alt="">` : ""}
+            ${
+              item.image_url
+                ? `<img class="tree-thumb" src="${item.image_url}" alt="${item.name}" title="Click to enlarge">`
+                : ""
+            }
             <span class="item-tag">item</span>
             <span>${item.name}</span>
           </span>
@@ -531,7 +551,11 @@ function renderResults(results, total, limit, offset) {
       (item) => `
         <li class="result" data-item-id="${item.id}">
           <div class="result-main">
-            ${item.image_url ? `<img class="thumb" src="${item.image_url}" alt="">` : ""}
+            ${
+              item.image_url
+                ? `<img class="thumb" src="${item.image_url}" alt="${item.name}" title="Click to enlarge">`
+                : ""
+            }
             <div>
               <div class="result-title">${item.name}</div>
               <div class="result-path">${item.location_path}</div>
@@ -574,6 +598,12 @@ async function refreshAll() {
 }
 
 resultsEl.addEventListener("click", async (event) => {
+  const image = event.target.closest(".thumb");
+  if (image && image.src) {
+    openImageLightbox(image.src, image.alt || "Item image");
+    return;
+  }
+
   const btn = event.target.closest(".move-btn");
   if (!btn) {
     return;
@@ -612,6 +642,12 @@ resultsEl.addEventListener("click", async (event) => {
 });
 
 treeViewEl.addEventListener("click", (event) => {
+  const image = event.target.closest(".tree-thumb");
+  if (image && image.src) {
+    openImageLightbox(image.src, image.alt || "Item image");
+    return;
+  }
+
   const locationTarget = event.target.closest("[data-location-id]");
   if (locationTarget) {
     selectLocation(locationTarget.dataset.locationId);
@@ -638,20 +674,16 @@ actionCreateItemBtn.addEventListener("click", () => {
   openModal(createItemModal);
 });
 
-openEditLocationBtn.addEventListener("click", () => {
-  if (!selectedLocationId) {
-    setStatus("Select a location in the tree first.");
+openEditBtn.addEventListener("click", () => {
+  if (selectedLocationId) {
+    openModal(editLocationModal);
     return;
   }
-  openModal(editLocationModal);
-});
-
-openEditItemBtn.addEventListener("click", () => {
-  if (!selectedItemId) {
-    setStatus("Select an item in the tree first.");
+  if (selectedItemId) {
+    openModal(editItemModal);
     return;
   }
-  openModal(editItemModal);
+  setStatus("Select a location or item in the tree first.");
 });
 
 document.querySelectorAll("[data-modal-close]").forEach((button) => {

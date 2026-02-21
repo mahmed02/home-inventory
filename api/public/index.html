@@ -34,8 +34,7 @@
           <h2>Inventory Tree</h2>
           <div class="actions-row">
             <button id="openCreateActionsBtn" class="plus-btn" title="Create">+</button>
-            <button id="openEditLocationBtn" disabled>Edit Location</button>
-            <button id="openEditItemBtn" disabled>Edit Item</button>
+            <button id="openEditBtn" disabled>Edit Selected</button>
             <button id="refreshTreeBtn">Refresh Tree</button>
             <button id="seedBtn">Seed Demo Data</button>
           </div>
@@ -162,6 +161,17 @@
             <button type="button" id="deleteItemBtn" class="danger">Delete Item</button>
           </div>
         </form>
+      </div>
+    </section>
+
+    <section id="imageLightboxModal" class="modal-overlay" hidden>
+      <div class="modal-card modal-image">
+        <div class="modal-head">
+          <h2>Image Preview</h2>
+          <button type="button" class="modal-close" data-modal-close="imageLightboxModal">x</button>
+        </div>
+        <img id="imageLightboxImg" class="lightbox-img" alt="" />
+        <p id="imageLightboxCaption" class="hint"></p>
       </div>
     </section>
 
