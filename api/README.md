@@ -72,6 +72,8 @@ Default DB URL expected by `.env.example`:
 
 For the full step-by-step runbook, use:
 - `/Users/mohammedahmed/MyProjects/home_inventory/DEPLOY.md`
+- CI/CD setup (GitHub Actions -> AWS SSM), use:
+- `/Users/mohammedahmed/MyProjects/home_inventory/CICD.md`
 
 ## Endpoints (Current)
 
