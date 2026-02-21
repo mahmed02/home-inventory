@@ -64,6 +64,16 @@ This version tracks implementation in three views:
 - [x] `image_url` persisted/updated for locations and items
 - [x] Image URL fields in create/edit forms
 - [x] Thumbnail rendering in search results and tree items
+- [x] Presigned S3 upload endpoint (`POST /uploads/presign`)
+- [x] UI upload buttons wired for create/edit item/location
+- [x] End-to-end upload validated in AWS (presign + PUT + render)
+
+### Phase 5.5 — First Deployment Validation (private)
+- [x] AWS EC2 + RDS + S3 environment created
+- [x] Migrations executed on EC2 against RDS
+- [x] API process managed with PM2
+- [x] Private network validation over Tailscale
+- [x] Smoke checks passed (`/health`, search, Siri)
 
 ---
 
@@ -75,6 +85,9 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 - [x] Decide hosting target (AWS stack vs Vercel/Supabase)
 - [x] Add baseline lint/format config and CI checks
 - [x] Add deployment checklist (env vars, DB migration runbook, backup schedule)
+- [ ] Add public staging domain + HTTPS (ACM + ALB/Nginx + DNS)
+- [ ] Run smoke checks on HTTPS staging URL (including `CHECK_UPLOADS=true`)
+- [ ] Add production cutover + rollback rehearsal notes after first HTTPS deploy
 
 ### Data / Quality
 - [x] Add migration test for unique `locations.code`
@@ -89,6 +102,8 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 ### Backup / Safety
 - [x] Add import dry-run mode (`validate_only=true`)
 - [x] Add optional id remap mode for merging into non-empty inventories (future-safe)
+- [ ] Automate scheduled backup export and retention policy
+- [ ] Run one restore drill from backup JSON in staging
 
 ### Photo Support (to complete Phase 5)
 - [x] Add direct file upload for item/location images
