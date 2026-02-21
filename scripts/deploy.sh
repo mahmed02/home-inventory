@@ -4,6 +4,8 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/srv/home_inventory}"
 DEPLOY_REF="${DEPLOY_REF:-origin/main}"
 PROCESS_NAME="${PROCESS_NAME:-home-inventory-api}"
+export HOME="${HOME:-/root}"
+export PM2_HOME="${PM2_HOME:-$HOME/.pm2}"
 
 cd "$APP_DIR"
 
@@ -25,8 +27,9 @@ else
   npm --prefix ./api install
 fi
 
-# Ensure S3 presign dependencies exist for upload endpoint runtime.
-npm --prefix ./api install --no-save @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+# Ensure S3 presign dependencies exist for upload endpoint runtime
+# without mutating package-lock.json on the server.
+npm --prefix ./api install --no-save --no-package-lock @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
 
 echo "[deploy] Running migrations"
 npm --prefix ./api run migrate
