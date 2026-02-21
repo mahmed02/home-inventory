@@ -72,10 +72,10 @@ jobs:
               echo "Rollback requires workflow input: ref" >&2
               exit 1
             fi
-            COMMAND="git config --global --add safe.directory ${APP_DIR} && cd ${APP_DIR} && git fetch --all --prune && git checkout ${DISPATCH_REF} && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} ROLLBACK_REF=${DISPATCH_REF} ./scripts/rollback.sh"
+            COMMAND="cd ${APP_DIR} && git -c safe.directory=${APP_DIR} fetch --all --prune && git -c safe.directory=${APP_DIR} checkout ${DISPATCH_REF} && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} ROLLBACK_REF=${DISPATCH_REF} ./scripts/rollback.sh"
           else
             DEPLOY_REF="${DISPATCH_REF:-${DEFAULT_DEPLOY_REF}}"
-            COMMAND="git config --global --add safe.directory ${APP_DIR} && cd ${APP_DIR} && git fetch --all --prune && git checkout ${DEPLOY_REF} && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} DEPLOY_REF=${DEPLOY_REF} PROCESS_NAME=${PROCESS_NAME} ./scripts/deploy.sh"
+            COMMAND="cd ${APP_DIR} && git -c safe.directory=${APP_DIR} fetch --all --prune && git -c safe.directory=${APP_DIR} checkout ${DEPLOY_REF} && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} DEPLOY_REF=${DEPLOY_REF} PROCESS_NAME=${PROCESS_NAME} ./scripts/deploy.sh"
           fi
 
           COMMAND_ID=$(aws ssm send-command \

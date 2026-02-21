@@ -7,14 +7,15 @@ PROCESS_NAME="${PROCESS_NAME:-home-inventory-api}"
 
 cd "$APP_DIR"
 
-echo "[deploy] Marking repo as safe directory for non-interactive runners"
-git config --global --add safe.directory "$APP_DIR" || true
+git_safe() {
+  git -c safe.directory="$APP_DIR" "$@"
+}
 
 echo "[deploy] Fetching repository updates"
-git fetch --all --prune
+git_safe fetch --all --prune
 
 echo "[deploy] Checking out ref: $DEPLOY_REF"
-git checkout "$DEPLOY_REF"
+git_safe checkout "$DEPLOY_REF"
 
 if [[ -f "api/package-lock.json" ]]; then
   echo "[deploy] Installing API dependencies with npm ci"
