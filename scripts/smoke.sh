@@ -4,6 +4,17 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-}"
 QUERY="${QUERY:-tool}"
 CHECK_UPLOADS="${CHECK_UPLOADS:-false}"
+BASIC_AUTH_USER="${BASIC_AUTH_USER:-}"
+BASIC_AUTH_PASS="${BASIC_AUTH_PASS:-}"
+
+AUTH_ARGS=()
+if [[ -n "$BASIC_AUTH_USER" || -n "$BASIC_AUTH_PASS" ]]; then
+  if [[ -z "$BASIC_AUTH_USER" || -z "$BASIC_AUTH_PASS" ]]; then
+    echo "Both BASIC_AUTH_USER and BASIC_AUTH_PASS are required when using basic auth." >&2
+    exit 1
+  fi
+  AUTH_ARGS=(-u "${BASIC_AUTH_USER}:${BASIC_AUTH_PASS}")
+fi
 
 if [[ -z "$BASE_URL" ]]; then
   echo "BASE_URL is required (example: BASE_URL=https://staging-api.example.com)" >&2
@@ -17,7 +28,7 @@ assert_status_200() {
   local url="$2"
 
   local status
-  status=$(curl -sS -o /tmp/home_inventory_smoke_body.json -w "%{http_code}" "$url")
+  status=$(curl -sS "${AUTH_ARGS[@]}" -o /tmp/home_inventory_smoke_body.json -w "%{http_code}" "$url")
 
   if [[ "$status" != "200" ]]; then
     echo "[FAIL] $name returned HTTP $status" >&2
@@ -53,6 +64,7 @@ assert_json_contains "Siri lookup" '"location_path"'
 
 if [[ "$CHECK_UPLOADS" == "true" ]]; then
   status=$(curl -sS -o /tmp/home_inventory_smoke_body.json -w "%{http_code}" \
+    "${AUTH_ARGS[@]}" \
     -X POST "$BASE_URL/uploads/presign" \
     -H "Content-Type: application/json" \
     -d '{"filename":"smoke.jpg","content_type":"image/jpeg","scope":"item"}')

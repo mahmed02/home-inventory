@@ -67,15 +67,33 @@ jobs:
         run: |
           set -euo pipefail
 
+          validate_ref() {
+            local ref_value="$1"
+            if [[ -z "${ref_value}" ]]; then
+              echo "ref cannot be empty" >&2
+              exit 1
+            fi
+            if [[ "${ref_value}" == -* ]]; then
+              echo "ref cannot start with '-'" >&2
+              exit 1
+            fi
+            if [[ ! "${ref_value}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+              echo "ref contains invalid characters" >&2
+              exit 1
+            fi
+          }
+
           if [[ "${DISPATCH_ACTION}" == "rollback" ]]; then
             if [[ -z "${DISPATCH_REF}" ]]; then
               echo "Rollback requires workflow input: ref" >&2
               exit 1
             fi
-            COMMAND="cd ${APP_DIR} && git -c safe.directory=${APP_DIR} fetch --all --prune && git -c safe.directory=${APP_DIR} checkout ${DISPATCH_REF} && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} ROLLBACK_REF=${DISPATCH_REF} ./scripts/rollback.sh"
+            validate_ref "${DISPATCH_REF}"
+            COMMAND="cd ${APP_DIR} && git -c safe.directory=${APP_DIR} fetch --all --prune && git -c safe.directory=${APP_DIR} checkout -- '${DISPATCH_REF}' && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} ROLLBACK_REF='${DISPATCH_REF}' ./scripts/rollback.sh"
           else
             DEPLOY_REF="${DISPATCH_REF:-${DEFAULT_DEPLOY_REF}}"
-            COMMAND="cd ${APP_DIR} && git -c safe.directory=${APP_DIR} fetch --all --prune && git -c safe.directory=${APP_DIR} checkout ${DEPLOY_REF} && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} DEPLOY_REF=${DEPLOY_REF} PROCESS_NAME=${PROCESS_NAME} ./scripts/deploy.sh"
+            validate_ref "${DEPLOY_REF}"
+            COMMAND="cd ${APP_DIR} && git -c safe.directory=${APP_DIR} fetch --all --prune && git -c safe.directory=${APP_DIR} checkout -- '${DEPLOY_REF}' && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} DEPLOY_REF='${DEPLOY_REF}' PROCESS_NAME='${PROCESS_NAME}' ./scripts/deploy.sh"
           fi
 
           COMMAND_ID=$(aws ssm send-command \

@@ -12,6 +12,8 @@ import {
   asRequiredUuid,
 } from "../middleware/validation";
 import { pool } from "../db/pool";
+import { env } from "../config/env";
+import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
 import { ItemRow } from "../types";
 import { isUuid, normalizeOptionalText, readLimitOffset } from "../utils";
 
@@ -160,9 +162,7 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
   }
 
   try {
-    const setClause = updates
-      .map((entry, index) => `${entry.key} = $${index + 1}`)
-      .join(", ");
+    const setClause = updates.map((entry, index) => `${entry.key} = $${index + 1}`).join(", ");
 
     const values = updates.map((entry) => entry.value);
 
@@ -253,6 +253,7 @@ itemsRouter.get("/items/search", async (req, res) => {
       id: row.id,
       name: row.name,
       image_url: row.image_url,
+      thumbnail_url: deriveThumbnailUrlFromImageUrl(row.image_url, env.s3Bucket, env.awsRegion),
       location_path: row.location_path,
     }));
 

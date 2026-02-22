@@ -13,15 +13,14 @@ const defaultEnvPath = path.resolve(__dirname, "../../.env");
 
 dotenv.config({ path: testEnvPath });
 dotenv.config({ path: defaultEnvPath });
+process.env.REQUIRE_AUTH = "false";
 
 if (process.env.TEST_DATABASE_URL) {
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 }
 
 if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "TEST_DATABASE_URL (or DATABASE_URL) must be set before running tests"
-  );
+  throw new Error("TEST_DATABASE_URL (or DATABASE_URL) must be set before running tests");
 }
 
 if (!process.env.DATABASE_URL.includes("_test")) {
@@ -103,16 +102,21 @@ beforeEach(async () => {
 });
 
 after(async () => {
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve();
+  if (server) {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
     });
-  });
-  await pool.end();
+  }
+
+  if (pool) {
+    await pool.end();
+  }
 });
 
 test("POST /locations rejects duplicate non-null code", async () => {
@@ -330,12 +334,32 @@ test("POST /uploads/presign validates request and reports missing config", async
   });
   assert.equal(invalidType.status, 400);
   assert.deepEqual(invalidType.json, {
-    error: "content_type must be an image MIME type",
+    error: "content_type must be one of image/jpeg, image/png, image/webp, image/gif",
   });
 
   const unconfigured = await request("/uploads/presign", {
     method: "POST",
     body: { filename: "box.jpg", content_type: "image/jpeg", scope: "item" },
+  });
+  assert.equal(unconfigured.status, 503);
+  assert.deepEqual(unconfigured.json, {
+    error: "S3 uploads are not configured (AWS_REGION/S3_BUCKET missing)",
+  });
+});
+
+test("POST /uploads/finalize validates request and reports missing config", async () => {
+  const missing = await request("/uploads/finalize", {
+    method: "POST",
+    body: {},
+  });
+  assert.equal(missing.status, 400);
+  assert.deepEqual(missing.json, { error: "image_url is required" });
+
+  const unconfigured = await request("/uploads/finalize", {
+    method: "POST",
+    body: {
+      image_url: "https://example-bucket.s3.us-east-1.amazonaws.com/item/demo/image.jpg",
+    },
   });
   assert.equal(unconfigured.status, 503);
   assert.deepEqual(unconfigured.json, {
@@ -435,12 +459,9 @@ test("DELETE /locations enforces child/item guard", async () => {
 });
 
 test("DELETE endpoints return 404 when target does not exist", async () => {
-  const missingLocation = await request(
-    "/locations/11111111-1111-4111-8111-111111111111",
-    {
-      method: "DELETE",
-    }
-  );
+  const missingLocation = await request("/locations/11111111-1111-4111-8111-111111111111", {
+    method: "DELETE",
+  });
   assert.equal(missingLocation.status, 404);
 
   const missingItem = await request("/items/11111111-1111-4111-8111-111111111111", {

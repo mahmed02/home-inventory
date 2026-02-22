@@ -30,12 +30,7 @@ async function insertItem(
     INSERT INTO items(name, description, keywords, location_id)
     VALUES ($1, $2, $3::text[], $4)
     `,
-    [
-      params.name,
-      params.description ?? null,
-      params.keywords,
-      params.locationId,
-    ]
+    [params.name, params.description ?? null, params.keywords, params.locationId]
   );
 }
 

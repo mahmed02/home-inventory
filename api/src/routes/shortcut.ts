@@ -5,7 +5,9 @@ import { normalizeOptionalText } from "../utils";
 
 const shortcutRouter = Router();
 
-async function lookupTopItem(q: string): Promise<{ item: string | null; location_path: string | null; notes: string }> {
+async function lookupTopItem(
+  q: string
+): Promise<{ item: string | null; location_path: string | null; notes: string }> {
   const needle = `%${q}%`;
 
   const result = await pool.query<{

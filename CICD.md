@@ -13,6 +13,12 @@ Deploy triggers:
 - Push to `main` -> deploy to `staging` environment
 - Manual dispatch -> deploy or rollback to `staging` or `production`
 
+CI checks now run:
+- typecheck
+- lint
+- format check
+- API contract tests (with Postgres service)
+
 ## 2) GitHub Environment Configuration
 
 Create GitHub Environments:

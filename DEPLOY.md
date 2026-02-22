@@ -45,6 +45,9 @@ NODE_ENV=production
 PORT=4000
 DATABASE_URL=postgres://<DB_USER>:<DB_PASSWORD>@<RDS_HOST>:5432/<DB_NAME>
 ENABLE_DEV_ROUTES=false
+REQUIRE_AUTH=true
+BASIC_AUTH_USER=<BASIC_AUTH_USER>
+BASIC_AUTH_PASS=<BASIC_AUTH_PASS>
 APP_BASE_URL=http://<EC2_PUBLIC_IP>:4000
 AWS_REGION=us-east-1
 S3_BUCKET=home-inventory-photos-staging
@@ -100,6 +103,32 @@ After IP-based deploy is working:
 3. Add HTTPS with ACM.
 4. Update `APP_BASE_URL` to HTTPS domain.
 5. Update smoke command with new `BASE_URL`.
+
+Run HTTPS smoke check with uploads:
+
+```bash
+BASE_URL=https://staging.<your-domain> CHECK_UPLOADS=true /Users/mohammedahmed/MyProjects/home_inventory/scripts/smoke.sh
+
+# If REQUIRE_AUTH=true:
+BASE_URL=https://staging.<your-domain> BASIC_AUTH_USER=<BASIC_AUTH_USER> BASIC_AUTH_PASS=<BASIC_AUTH_PASS> CHECK_UPLOADS=true /Users/mohammedahmed/MyProjects/home_inventory/scripts/smoke.sh
+```
+
+## 7.1) Backup Automation (Staging/Prod)
+
+Set a daily backup cron (example 03:30 UTC):
+
+```bash
+30 3 * * * BASE_URL=https://staging.<your-domain> BACKUP_DIR=/srv/home_inventory/backups RETAIN_DAYS=14 /srv/home_inventory/scripts/backup.sh >> /var/log/home-inventory-backup.log 2>&1
+```
+
+Run restore drill safely (validation only):
+
+```bash
+BASE_URL=https://staging.<your-domain> /srv/home_inventory/scripts/restore-drill.sh
+
+# If REQUIRE_AUTH=true:
+BASE_URL=https://staging.<your-domain> BASIC_AUTH_USER=<BASIC_AUTH_USER> BASIC_AUTH_PASS=<BASIC_AUTH_PASS> /srv/home_inventory/scripts/restore-drill.sh
+```
 
 ## 8) Common Failure You Just Hit
 

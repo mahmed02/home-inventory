@@ -1,4 +1,4 @@
-.PHONY: db-up db-down db-logs install migrate dev reset seed test smoke
+.PHONY: db-up db-down db-logs install migrate dev reset seed test smoke backup restore-drill
 
 db-up:
 	docker compose up -d postgres
@@ -29,3 +29,9 @@ test:
 
 smoke:
 	./scripts/smoke.sh
+
+backup:
+	./scripts/backup.sh
+
+restore-drill:
+	./scripts/restore-drill.sh

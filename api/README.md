@@ -49,6 +49,10 @@ Default DB URL expected by `.env.example`:
 | `PORT` | `4000` | `4000` (or platform port) | `4000` (or platform port) | yes |
 | `DATABASE_URL` | local Postgres URL | RDS connection string (staging DB) | RDS connection string (prod DB) | yes |
 | `ENABLE_DEV_ROUTES` | `true` | `false` | `false` | yes |
+| `REQUIRE_AUTH` | `false` | `true` | `true` | yes |
+| `BASIC_AUTH_USER` | optional | required when `REQUIRE_AUTH=true` | required when `REQUIRE_AUTH=true` | conditional |
+| `BASIC_AUTH_PASS` | optional | required when `REQUIRE_AUTH=true` | required when `REQUIRE_AUTH=true` | conditional |
+| `CORS_ALLOW_ORIGINS` | empty (same-origin only) | comma-separated allowlist | comma-separated allowlist | optional |
 | `APP_BASE_URL` | `http://localhost:4000` | public HTTPS staging URL | public HTTPS prod URL | yes |
 | `AWS_REGION` | `us-east-1` | deployment region | deployment region | yes |
 | `S3_BUCKET` | dev bucket name | staging bucket name | prod bucket name | yes |
@@ -56,6 +60,8 @@ Default DB URL expected by `.env.example`:
 | `AWS_SECRET_ACCESS_KEY` | optional | optional (prefer IAM role) | optional (prefer IAM role) | conditional |
 
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are only required when you are not using IAM role credentials on compute.
+
+When `REQUIRE_AUTH=true`, all endpoints except `/health` require HTTP Basic auth.
 
 ## AWS Deploy Checklist (MVP)
 
@@ -74,6 +80,8 @@ For the full step-by-step runbook, use:
 - `/Users/mohammedahmed/MyProjects/home_inventory/DEPLOY.md`
 - CI/CD setup (GitHub Actions -> AWS SSM), use:
 - `/Users/mohammedahmed/MyProjects/home_inventory/CICD.md`
+- HTTPS staging and cutover rehearsal checklist:
+- `/Users/mohammedahmed/MyProjects/home_inventory/STAGING_HTTPS_RUNBOOK.md`
 
 ## Endpoints (Current)
 
@@ -95,6 +103,7 @@ For the full step-by-step runbook, use:
 - `GET /export/inventory`
 - `POST /import/inventory`
 - `POST /uploads/presign`
+- `POST /uploads/finalize`
 - `POST /dev/seed` (dev-only; gated by `ENABLE_DEV_ROUTES`)
 
 ## MVP UI
@@ -125,6 +134,14 @@ For the full step-by-step runbook, use:
   - `curl -X POST "http://localhost:4000/import/inventory?validate_only=true" -H "Content-Type: application/json" --data-binary @backup.json`
 - Merge snapshot into a non-empty inventory with ID remap:
   - `curl -X POST "http://localhost:4000/import/inventory?remap_ids=true" -H "Content-Type: application/json" --data-binary @backup.json`
+- Scheduled backup with retention:
+  - `BASE_URL=https://staging-inventory.your-domain.com RETAIN_DAYS=14 ./scripts/backup.sh`
+- Restore drill (safe validation mode):
+  - `BASE_URL=https://staging-inventory.your-domain.com ./scripts/restore-drill.sh`
+- Restore drill merge mode (non-destructive to existing IDs):
+  - `BASE_URL=https://staging-inventory.your-domain.com DRILL_MODE=merge ./scripts/restore-drill.sh`
+- Full replace restore drill (destructive):
+  - `BASE_URL=https://staging-inventory.your-domain.com DRILL_MODE=replace ALLOW_DESTRUCTIVE=true ./scripts/restore-drill.sh`
 
 ## API Response Contract
 
@@ -144,8 +161,11 @@ For the full step-by-step runbook, use:
 2. API returns:
    - `upload_url` (presigned `PUT` URL)
    - `image_url` (public object URL to store in `image_url` field)
+   - `thumbnail_url` (target thumbnail object URL)
 3. Upload file bytes to `upload_url` with HTTP `PUT`.
-4. Save `image_url` on item/location create or update.
+4. Finalize thumbnail generation:
+   - `POST /uploads/finalize` with `image_url`
+5. Save `image_url` on item/location create or update.
 
 Notes:
 - Requires `AWS_REGION` and `S3_BUCKET`.
@@ -153,6 +173,8 @@ Notes:
 - Returned `image_url` assumes objects are readable by your bucket policy or CloudFront setup.
 - If SDK packages are not installed yet, run:
   - `npm --prefix ./api install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner`
+- For server-side thumbnail generation, install `sharp`:
+  - `npm --prefix ./api install sharp`
 
 ## Tests
 
@@ -172,13 +194,16 @@ Notes:
   - `BASE_URL=https://staging-inventory.your-domain.com ./scripts/smoke.sh`
 - Include upload-presign check:
   - `BASE_URL=https://staging-inventory.your-domain.com CHECK_UPLOADS=true ./scripts/smoke.sh`
+- With basic auth enabled:
+  - `BASE_URL=https://staging-inventory.your-domain.com BASIC_AUTH_USER=<user> BASIC_AUTH_PASS=<pass> CHECK_UPLOADS=true ./scripts/smoke.sh`
 
-## Current Migration Set (Tickets 1-4)
+## Current Migration Set
 
 - `0001_enable_pgcrypto.sql`
 - `0002_create_locations.sql`
 - `0003_create_items.sql`
 - `0004_add_updated_at_triggers.sql`
+- `0005_drop_items_brand_low_churn.sql`
 
 ## Notes
 

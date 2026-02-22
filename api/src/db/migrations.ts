@@ -15,18 +15,14 @@ async function ensureMigrationsTable(client: PoolClient): Promise<void> {
 }
 
 async function appliedVersions(client: PoolClient): Promise<Set<string>> {
-  const result = await client.query<{ version: string }>(
-    "SELECT version FROM schema_migrations"
-  );
+  const result = await client.query<{ version: string }>("SELECT version FROM schema_migrations");
   return new Set(result.rows.map((row) => row.version));
 }
 
 export async function applyPendingMigrations(
   migrationsDir = defaultMigrationsDir
 ): Promise<string[]> {
-  const files = (await fs.readdir(migrationsDir))
-    .filter((file) => file.endsWith(".sql"))
-    .sort();
+  const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
 
   const client = await pool.connect();
   const appliedNow: string[] = [];
@@ -45,10 +41,7 @@ export async function applyPendingMigrations(
 
       await client.query("BEGIN");
       await client.query(sql);
-      await client.query(
-        "INSERT INTO schema_migrations(version) VALUES ($1)",
-        [file]
-      );
+      await client.query("INSERT INTO schema_migrations(version) VALUES ($1)", [file]);
       await client.query("COMMIT");
 
       appliedNow.push(file);

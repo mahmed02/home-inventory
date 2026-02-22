@@ -37,7 +37,9 @@ If this fails, fix server/network first.
    - Value: `http://<YOUR-HOST>:4000/api/items/lookup?q=` then insert the **Provided Input** variable.
 5. Add action **Get Contents of URL**.
    - Method: `GET`
-   - Headers: none needed for MVP.
+   - Headers:
+     - If API auth is disabled (`REQUIRE_AUTH=false`): none.
+     - If API auth is enabled (`REQUIRE_AUTH=true`): add `Authorization` header with value `Basic <base64(user:pass)>`.
 6. Add action **Get Dictionary Value**.
    - Key: `location_path`
 7. Add action **If** (Dictionary Value has any value).
@@ -82,5 +84,5 @@ Usage: say the phrase, Siri asks for item, API answer is spoken.
 ## MVP Notes
 
 - Keep response small and predictable (`item`, `location_path`, `notes`).
-- For MVP, no auth is acceptable on trusted home LAN.
-- Before wider exposure, add auth and rate limiting.
+- Auth can be disabled on trusted home LAN only (`REQUIRE_AUTH=false`).
+- For public/HTTPS exposure, keep auth enabled and use rate limiting.

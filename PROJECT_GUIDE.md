@@ -287,11 +287,10 @@ Good rule:
 
 ## 14) Current Gaps (Shortlist)
 
-- hosting config finalized for AWS deployment
-- direct image upload pipeline (file -> S3 -> URL)
-- Siri setup walkthrough doc for non-technical household members
-- breadcrumb UX in interactive explorer
-- expanded edge-case tests
+- public staging domain + HTTPS completion (ACM + ALB/Nginx + DNS)
+- HTTPS smoke checks on staging with upload checks enabled
+- one staging restore drill run and evidence capture
+- CI formatting baseline cleanup (`prettier --check` still failing)
 
 ---
 

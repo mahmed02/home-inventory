@@ -90,6 +90,19 @@ function setStatus(message) {
   statusEl.textContent = message;
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("`", "&#96;");
+}
+
 function updateActionState() {
   const hasSelection = Boolean(selectedLocationId || selectedItemId);
   openEditBtn.disabled = !hasSelection;
@@ -208,6 +221,15 @@ async function uploadImageFile(file, scope) {
     throw new Error(`Upload failed (${uploadResponse.status})`);
   }
 
+  try {
+    await fetchJson("/uploads/finalize", {
+      method: "POST",
+      body: JSON.stringify({ image_url: presigned.image_url }),
+    });
+  } catch (error) {
+    console.warn("Thumbnail generation skipped:", error);
+  }
+
   return presigned.image_url;
 }
 
@@ -252,10 +274,12 @@ function parseKeywords(raw) {
 }
 
 function renderLocationOptions(selectEl, options, placeholder, selectedValue = "") {
-  const rows = [`<option value="">${placeholder}</option>`];
+  const rows = [`<option value="">${escapeHtml(placeholder)}</option>`];
   for (const loc of options) {
     const selected = loc.id === selectedValue ? " selected" : "";
-    rows.push(`<option value="${loc.id}"${selected}>${loc.path}</option>`);
+    rows.push(
+      `<option value="${escapeAttr(loc.id)}"${selected}>${escapeHtml(loc.path)}</option>`
+    );
   }
   selectEl.innerHTML = rows.join("");
 }
@@ -353,6 +377,9 @@ function buildTreeHtml(nodes) {
 
   function renderNode(node) {
     const locationSelected = selectedLocationId === node.id ? " selected" : "";
+    const safeLocationId = escapeAttr(node.id);
+    const safeLocationName = escapeHtml(node.name);
+    const safeLocationCode = node.code ? ` (${escapeHtml(node.code)})` : "";
     const children = [];
 
     for (const child of node.children || []) {
@@ -361,16 +388,19 @@ function buildTreeHtml(nodes) {
 
     for (const item of node.items || []) {
       const itemSelected = selectedItemId === item.id ? " selected" : "";
+      const safeItemId = escapeAttr(item.id);
+      const safeItemName = escapeHtml(item.name);
+      const thumbUrl = item.thumbnail_url || item.image_url;
+      const imageHtml =
+        item.image_url && thumbUrl
+          ? `<img class="tree-thumb" src="${escapeAttr(thumbUrl)}" data-full-image="${escapeAttr(item.image_url)}" alt="${escapeAttr(item.name)}" title="Click to enlarge">`
+          : "";
       children.push(`
         <li class="tree-item">
-          <span class="item-label${itemSelected}" data-item-id="${item.id}">
-            ${
-              item.image_url
-                ? `<img class="tree-thumb" src="${item.image_url}" alt="${item.name}" title="Click to enlarge">`
-                : ""
-            }
+          <span class="item-label${itemSelected}" data-item-id="${safeItemId}">
+            ${imageHtml}
             <span class="item-tag">item</span>
-            <span>${item.name}</span>
+            <span>${safeItemName}</span>
           </span>
         </li>
       `);
@@ -384,8 +414,8 @@ function buildTreeHtml(nodes) {
       <li class="tree-node">
         <details open>
           <summary>
-            <span class="tree-label${locationSelected}" data-location-id="${node.id}">
-              ${node.name}${node.code ? ` (${node.code})` : ""}
+            <span class="tree-label${locationSelected}" data-location-id="${safeLocationId}">
+              ${safeLocationName}${safeLocationCode}
             </span>
           </summary>
           ${childrenHtml}
@@ -543,22 +573,24 @@ function renderResults(results, total, limit, offset) {
   metaEl.textContent = `total: ${total}, showing ${results.length}, offset ${offset}, limit ${limit}`;
 
   const options = flatLocations
-    .map((loc) => `<option value="${loc.id}">${loc.path}</option>`)
+    .map(
+      (loc) => `<option value="${escapeAttr(loc.id)}">${escapeHtml(loc.path)}</option>`
+    )
     .join("");
 
   resultsEl.innerHTML = results
     .map(
       (item) => `
-        <li class="result" data-item-id="${item.id}">
+        <li class="result" data-item-id="${escapeAttr(item.id)}">
           <div class="result-main">
             ${
               item.image_url
-                ? `<img class="thumb" src="${item.image_url}" alt="${item.name}" title="Click to enlarge">`
+                ? `<img class="thumb" src="${escapeAttr(item.thumbnail_url || item.image_url)}" data-full-image="${escapeAttr(item.image_url)}" alt="${escapeAttr(item.name)}" title="Click to enlarge">`
                 : ""
             }
             <div>
-              <div class="result-title">${item.name}</div>
-              <div class="result-path">${item.location_path}</div>
+              <div class="result-title">${escapeHtml(item.name)}</div>
+              <div class="result-path">${escapeHtml(item.location_path)}</div>
             </div>
           </div>
           <div class="move-row">
@@ -600,7 +632,7 @@ async function refreshAll() {
 resultsEl.addEventListener("click", async (event) => {
   const image = event.target.closest(".thumb");
   if (image && image.src) {
-    openImageLightbox(image.src, image.alt || "Item image");
+    openImageLightbox(image.dataset.fullImage || image.src, image.alt || "Item image");
     return;
   }
 
@@ -644,7 +676,7 @@ resultsEl.addEventListener("click", async (event) => {
 treeViewEl.addEventListener("click", (event) => {
   const image = event.target.closest(".tree-thumb");
   if (image && image.src) {
-    openImageLightbox(image.src, image.alt || "Item image");
+    openImageLightbox(image.dataset.fullImage || image.src, image.alt || "Item image");
     return;
   }
 

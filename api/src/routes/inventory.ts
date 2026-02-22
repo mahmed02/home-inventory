@@ -1,5 +1,7 @@
 import { Router } from "express";
+import { env } from "../config/env";
 import { pool } from "../db/pool";
+import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
 import { ItemRow, LocationRow } from "../types";
 
 type InventoryNode = LocationRow & {
@@ -10,6 +12,7 @@ type InventoryNode = LocationRow & {
     description: string | null;
     keywords: string[];
     image_url: string | null;
+    thumbnail_url: string | null;
     location_id: string;
     created_at: string;
     updated_at: string;
@@ -56,6 +59,7 @@ inventoryRouter.get("/inventory/tree", async (_req, res) => {
         description: item.description,
         keywords: item.keywords,
         image_url: item.image_url,
+        thumbnail_url: deriveThumbnailUrlFromImageUrl(item.image_url, env.s3Bucket, env.awsRegion),
         location_id: item.location_id,
         created_at: item.created_at,
         updated_at: item.updated_at,

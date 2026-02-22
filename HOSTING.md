@@ -24,6 +24,7 @@ This project is locked to an AWS deployment baseline for MVP.
 - Use separate S3 buckets (or prefixes) for staging and production.
 - Prefer IAM role credentials for EC2; avoid long-lived static AWS keys.
 - Disable dev-only routes outside local dev (`ENABLE_DEV_ROUTES=false`).
+- Enable API authentication for staging/production (`REQUIRE_AUTH=true` with Basic auth credentials).
 
 ## Environment Baseline
 

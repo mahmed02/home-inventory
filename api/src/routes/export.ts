@@ -2,11 +2,8 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { PoolClient } from "pg";
 import { pool } from "../db/pool";
-import {
-  sendConflict,
-  sendInternalError,
-  sendValidationError,
-} from "../middleware/http";
+import { createInMemoryRateLimit } from "../middleware/rateLimit";
+import { sendConflict, sendInternalError, sendValidationError } from "../middleware/http";
 import { ItemRow, LocationRow } from "../types";
 import { isUuid } from "../utils";
 
@@ -16,6 +13,13 @@ type ImportPayload = {
 };
 
 const exportRouter = Router();
+exportRouter.use(
+  createInMemoryRateLimit({
+    keyPrefix: "export-import",
+    max: 200,
+    windowMs: 60_000,
+  })
+);
 
 function parseBooleanQuery(value: unknown): boolean {
   return typeof value === "string" && value.toLowerCase() === "true";

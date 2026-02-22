@@ -88,7 +88,7 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 - [x] Add deployment checklist (env vars, DB migration runbook, backup schedule)
 - [ ] Add public staging domain + HTTPS (ACM + ALB/Nginx + DNS)
 - [ ] Run smoke checks on HTTPS staging URL (including `CHECK_UPLOADS=true`)
-- [ ] Add production cutover + rollback rehearsal notes after first HTTPS deploy
+- [x] Add production cutover + rollback rehearsal notes after first HTTPS deploy
 
 ### Data / Quality
 - [x] Add migration test for unique `locations.code`
@@ -103,13 +103,13 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 ### Backup / Safety
 - [x] Add import dry-run mode (`validate_only=true`)
 - [x] Add optional id remap mode for merging into non-empty inventories (future-safe)
-- [ ] Automate scheduled backup export and retention policy
+- [x] Automate scheduled backup export and retention policy
 - [ ] Run one restore drill from backup JSON in staging
 
 ### Photo Support (to complete Phase 5)
 - [x] Add direct file upload for item/location images
 - [x] Add storage integration (S3/Supabase/Cloudinary)
-- [ ] Add server-side thumbnail generation pipeline
+- [x] Add server-side thumbnail generation pipeline
 
 ---
 

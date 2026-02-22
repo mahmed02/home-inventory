@@ -1,5 +1,7 @@
 import express from "express";
 import path from "node:path";
+import { requireBasicAuth } from "./middleware/auth";
+import { corsPolicy, securityHeaders } from "./middleware/security";
 import { responseEnvelope } from "./middleware/http";
 import devRouter from "./routes/dev";
 import exportRouter from "./routes/export";
@@ -13,8 +15,11 @@ import uploadsRouter from "./routes/uploads";
 const app = express();
 const publicDir = path.resolve(__dirname, "../public");
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(responseEnvelope);
+app.use(securityHeaders);
+app.use(corsPolicy);
+app.use(requireBasicAuth);
 app.use(healthRouter);
 app.use(locationsRouter);
 app.use(itemsRouter);

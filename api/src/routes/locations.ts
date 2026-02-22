@@ -6,11 +6,7 @@ import {
   sendNotFound,
   sendValidationError,
 } from "../middleware/http";
-import {
-  asOptionalText,
-  asOptionalUuid,
-  asRequiredText,
-} from "../middleware/validation";
+import { asOptionalText, asOptionalUuid, asRequiredText } from "../middleware/validation";
 import { pool } from "../db/pool";
 import { LocationRow } from "../types";
 import { isUuid, normalizeOptionalText } from "../utils";
@@ -71,7 +67,7 @@ locationsRouter.post("/locations", async (req, res) => {
 locationsRouter.get("/locations/tree", async (req, res) => {
   const rootId = normalizeOptionalText(req.query.root_id);
 
-    if (rootId && !isUuid(rootId)) {
+  if (rootId && !isUuid(rootId)) {
     return sendValidationError(res, "root_id must be a UUID");
   }
 
@@ -271,9 +267,7 @@ locationsRouter.patch("/locations/:id", async (req, res) => {
   }
 
   try {
-    const setClause = updates
-      .map((entry, index) => `${entry.key} = $${index + 1}`)
-      .join(", ");
+    const setClause = updates.map((entry, index) => `${entry.key} = $${index + 1}`).join(", ");
     const values = updates.map((entry) => entry.value);
 
     const result = await pool.query<LocationRow>(
