@@ -138,6 +138,20 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 - [ ] Scan-to-view experience
 - [ ] Verification mode for expected vs actual inventory
 
+### Phase 11 — Mobile App + Storage Modes
+- [ ] Define mobile stack (`React Native` or `Flutter`) and baseline app architecture
+- [ ] Local-only mode (single-user):
+- [ ] Store full inventory in on-device DB (SQLite/Realm)
+- [ ] Disable multi-user sync features in local-only mode
+- [ ] Provide local export/import backup flow for device migration
+- [ ] Cloud mode with offline support:
+- [ ] Use cloud API as source of truth when online
+- [ ] Keep local on-device cache for offline read/write
+- [ ] Queue offline mutations and sync/reconcile when internet returns
+- [ ] Conflict strategy for cloud mode (last-write-wins for MVP, upgrade later if needed)
+- [ ] User-facing mode toggle and clear mode status indicator (`Local Only` vs `Cloud Sync`)
+- [ ] Security baseline for mobile storage (at-rest encryption + secure token/key handling)
+
 ---
 
 ## Milestones
