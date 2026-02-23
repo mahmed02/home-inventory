@@ -1117,28 +1117,37 @@ async function askAssistant() {
   setStatus("Asking assistant...");
   try {
     const payload = await fetchJson(`/api/items/lookup?q=${encodeURIComponent(q)}`);
-    const hasModernNliShape = payload && typeof payload.intent === "string";
-    const answer =
-      payload && typeof payload.answer === "string"
-        ? payload.answer
-        : payload &&
-            typeof payload.item === "string" &&
-            payload.item &&
-            typeof payload.location_path === "string" &&
-            payload.location_path
-          ? `${payload.item} is in ${payload.location_path}.`
-          : payload && typeof payload.notes === "string"
-            ? payload.notes
-            : "I could not generate a response.";
-    const intent = hasModernNliShape ? payload.intent : "legacy_lookup";
-    const confidence =
-      payload && typeof payload.confidence === "number" ? payload.confidence.toFixed(2) : "n/a";
-    const fallback =
-      payload && typeof payload.fallback === "boolean"
-        ? String(payload.fallback)
-        : String(!(payload && typeof payload.item === "string" && payload.item));
 
-    pushChatEntry("assistant", answer, `intent=${intent} confidence=${confidence} fallback=${fallback}`);
+    const isModernPayload =
+      payload &&
+      typeof payload === "object" &&
+      typeof payload.intent === "string" &&
+      typeof payload.answer === "string" &&
+      typeof payload.confidence === "number" &&
+      typeof payload.fallback === "boolean";
+
+    if (!isModernPayload) {
+      throw new Error(
+        "Assistant API response is outdated. Redeploy the latest backend to use chat assistant."
+      );
+    }
+
+    const answer =
+      payload.answer.trim().length > 0
+        ? payload.answer
+        : typeof payload.notes === "string" && payload.notes.trim().length > 0
+          ? payload.notes
+          : "I could not generate a response.";
+    const confirmation =
+      typeof payload.requires_confirmation === "boolean"
+        ? String(payload.requires_confirmation)
+        : "false";
+
+    pushChatEntry(
+      "assistant",
+      answer,
+      `intent=${payload.intent} confidence=${payload.confidence.toFixed(2)} fallback=${String(payload.fallback)} requires_confirmation=${confirmation}`
+    );
     setStatus("Assistant response ready.");
   } catch (error) {
     pushChatEntry("assistant", error.message, "intent=error");
