@@ -1,7 +1,6 @@
 import { pool } from "../db/pool";
 import { env } from "../config/env";
 import { ReindexItemEmbeddingsMode, reindexItemEmbeddings } from "../search/reindexItemEmbeddings";
-import { supportsMissingEmbeddingReindex } from "../search/itemEmbeddings";
 import { isUuid } from "../utils";
 
 type CliOptions = {
@@ -119,7 +118,7 @@ function parseArgs(args: string[]): CliOptions {
 
 async function run(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
-  if (options.mode === "missing" && !supportsMissingEmbeddingReindex()) {
+  if (options.mode === "missing") {
     console.warn(
       JSON.stringify({
         event: "warning",

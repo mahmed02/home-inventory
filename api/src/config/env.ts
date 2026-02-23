@@ -19,11 +19,7 @@ const s3Bucket = process.env.S3_BUCKET ?? "";
 const basicAuthUser = process.env.BASIC_AUTH_USER ?? "";
 const basicAuthPass = process.env.BASIC_AUTH_PASS ?? "";
 const sessionTtlHoursRaw = Number(process.env.SESSION_TTL_HOURS ?? "720");
-const searchProviderRaw = (process.env.SEARCH_PROVIDER ?? "postgres").trim().toLowerCase();
-const embeddingsProvider = (process.env.EMBEDDINGS_PROVIDER ?? "deterministic")
-  .trim()
-  .toLowerCase();
-const embeddingDimensionsRaw = Number(process.env.EMBEDDING_DIMENSIONS ?? "64");
+const searchProviderRaw = (process.env.SEARCH_PROVIDER ?? "pinecone").trim().toLowerCase();
 const corsAllowOrigins = (process.env.CORS_ALLOW_ORIGINS ?? "")
   .split(",")
   .map((entry) => entry.trim())
@@ -65,13 +61,13 @@ export function resolveRequireUserAccounts(): boolean {
   return false;
 }
 
-export type SearchProvider = "postgres" | "pinecone";
+export type SearchProvider = "pinecone";
 
 export function resolveSearchProvider(): SearchProvider {
-  if (searchProviderRaw === "postgres" || searchProviderRaw === "pinecone") {
+  if (searchProviderRaw === "pinecone") {
     return searchProviderRaw;
   }
-  throw new Error("SEARCH_PROVIDER must be one of: postgres, pinecone");
+  throw new Error("SEARCH_PROVIDER must be set to 'pinecone'.");
 }
 
 const enableDevRoutes = resolveEnableDevRoutes();
@@ -81,9 +77,6 @@ const searchProvider = resolveSearchProvider();
 const sessionTtlHours = Number.isFinite(sessionTtlHoursRaw)
   ? Math.min(Math.max(Math.trunc(sessionTtlHoursRaw), 1), 24 * 365)
   : 720;
-const embeddingDimensions = Number.isFinite(embeddingDimensionsRaw)
-  ? Math.min(Math.max(Math.trunc(embeddingDimensionsRaw), 8), 2048)
-  : 64;
 
 if (!databaseUrl) {
   throw new Error("DATABASE_URL is required");
@@ -99,7 +92,7 @@ if (requireAuth && requireUserAccounts) {
   );
 }
 
-if (searchProvider === "pinecone" && (!pineconeApiKey || !pineconeIndexName)) {
+if (!pineconeApiKey || !pineconeIndexName) {
   throw new Error("PINECONE_API_KEY and PINECONE_INDEX_NAME are required when SEARCH_PROVIDER=pinecone");
 }
 
@@ -111,8 +104,6 @@ export const env = {
   requireUserAccounts,
   searchProvider,
   sessionTtlHours,
-  embeddingsProvider,
-  embeddingDimensions,
   basicAuthUser,
   basicAuthPass,
   appBaseUrl,

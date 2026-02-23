@@ -55,14 +55,14 @@ Default DB URL expected by `.env.example`:
 | `REQUIRE_USER_ACCOUNTS` | `false` | `false` or `true` | `true` (recommended) | optional |
 | `SESSION_TTL_HOURS` | `720` | `720` | `720` | optional |
 | `CORS_ALLOW_ORIGINS` | empty (same-origin only) | comma-separated allowlist | comma-separated allowlist | optional |
-| `SEARCH_PROVIDER` | `postgres` | `postgres` or `pinecone` | `pinecone` (recommended) | yes |
+| `SEARCH_PROVIDER` | `pinecone` | `pinecone` | `pinecone` | yes |
 | `APP_BASE_URL` | `http://localhost:4000` | public HTTPS staging URL | public HTTPS prod URL | yes |
 | `AWS_REGION` | `us-east-1` | deployment region | deployment region | yes |
 | `S3_BUCKET` | dev bucket name | staging bucket name | prod bucket name | yes |
 | `AWS_ACCESS_KEY_ID` | optional | optional (prefer IAM role) | optional (prefer IAM role) | conditional |
 | `AWS_SECRET_ACCESS_KEY` | optional | optional (prefer IAM role) | optional (prefer IAM role) | conditional |
-| `PINECONE_API_KEY` | unset | required when `SEARCH_PROVIDER=pinecone` | required when `SEARCH_PROVIDER=pinecone` | conditional |
-| `PINECONE_INDEX_NAME` | unset | required when `SEARCH_PROVIDER=pinecone` | required when `SEARCH_PROVIDER=pinecone` | conditional |
+| `PINECONE_API_KEY` | unset | required | required | yes |
+| `PINECONE_INDEX_NAME` | unset | required | required | yes |
 | `PINECONE_INDEX_HOST` | unset | optional (recommended for production) | optional (recommended for production) | optional |
 | `PINECONE_NAMESPACE` | `home-inventory` | optional | optional | optional |
 | `PINECONE_TEXT_FIELD` | `chunk_text` | optional | optional | optional |
@@ -70,8 +70,7 @@ Default DB URL expected by `.env.example`:
 
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are only required when you are not using IAM role credentials on compute.
 
-`SEARCH_PROVIDER=postgres` uses in-database embeddings in `item_embeddings`.
-`SEARCH_PROVIDER=pinecone` routes semantic search and Siri lookup retrieval through Pinecone integrated search.
+Semantic search and Siri lookup retrieval use Pinecone integrated search (`SEARCH_PROVIDER=pinecone`).
 
 When `REQUIRE_AUTH=true`, all endpoints except `/health` require HTTP Basic auth.
 When `REQUIRE_USER_ACCOUNTS=true`, all endpoints except `/health` and `/auth/*` require a bearer session token.
@@ -145,7 +144,7 @@ For the full step-by-step runbook, use:
 
 - Reset inventory data: `npm --prefix ./api run db:reset`
 - Seed demo inventory data: `npm --prefix ./api run db:seed`
-- Backfill missing embeddings for existing items: `npm --prefix ./api run embeddings:reindex`
+- Reindex item embeddings/documents into Pinecone: `npm --prefix ./api run embeddings:reindex`
 - Full embedding reindex for all items: `npm --prefix ./api run embeddings:reindex -- --mode=all`
 - Chunked/resumable runs:
   - Stop after 10 batches: `npm --prefix ./api run embeddings:reindex -- --max-batches=10`
@@ -209,6 +208,7 @@ Notes:
 
 - Setup: `cp ./api/.env.test.example ./api/.env.test`
 - Create test DB: `docker exec -it home_inventory_postgres createdb -U postgres home_inventory_test`
+- Populate Pinecone vars in `./api/.env.test` (`PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, optional `PINECONE_INDEX_HOST`)
 - Run contract tests: `npm --prefix ./api test`
 
 ## Quality Checks

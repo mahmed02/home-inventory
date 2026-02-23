@@ -1,8 +1,5 @@
 import { PoolClient } from "pg";
-import { env } from "../config/env";
-import { pool } from "../db/pool";
 import { ItemRow } from "../types";
-import { resolveEmbeddingProvider } from "./embeddings";
 import { pineconeIndex, pineconeRecordFromItem } from "./pineconeClient";
 
 type Queryable = Pick<PoolClient, "query">;
@@ -32,44 +29,6 @@ export function itemEmbeddingSourceText(item: ItemEmbeddingInput): string {
     .join("\n");
 }
 
-async function upsertPostgresItemEmbedding(
-  item: ItemEmbeddingInput,
-  queryable: Queryable = pool
-): Promise<void> {
-  const provider = resolveEmbeddingProvider();
-  const sourceText = itemEmbeddingSourceText(item);
-  const embedding = await provider.embed(sourceText);
-
-  await queryable.query(
-    `
-    INSERT INTO item_embeddings(
-      item_id,
-      owner_user_id,
-      household_id,
-      embedding,
-      model,
-      source_text
-    )
-    VALUES ($1, $2, $3, $4::double precision[], $5, $6)
-    ON CONFLICT (item_id)
-    DO UPDATE SET
-      owner_user_id = EXCLUDED.owner_user_id,
-      household_id = EXCLUDED.household_id,
-      embedding = EXCLUDED.embedding,
-      model = EXCLUDED.model,
-      source_text = EXCLUDED.source_text
-    `,
-    [
-      item.id,
-      item.owner_user_id ?? null,
-      item.household_id ?? null,
-      embedding,
-      provider.model,
-      sourceText,
-    ]
-  );
-}
-
 async function upsertPineconeItemEmbedding(item: ItemEmbeddingInput): Promise<void> {
   const sourceText = itemEmbeddingSourceText(item);
   const record = pineconeRecordFromItem(item, sourceText);
@@ -80,24 +39,12 @@ async function upsertPineconeItemEmbedding(item: ItemEmbeddingInput): Promise<vo
 
 export async function upsertItemEmbedding(
   item: ItemEmbeddingInput,
-  queryable: Queryable = pool
+  _queryable?: Queryable
 ): Promise<void> {
-  if (env.searchProvider === "pinecone") {
-    await upsertPineconeItemEmbedding(item);
-    return;
-  }
-
-  await upsertPostgresItemEmbedding(item, queryable);
+  void _queryable;
+  await upsertPineconeItemEmbedding(item);
 }
 
 export async function deleteItemEmbedding(itemId: string): Promise<void> {
-  if (env.searchProvider !== "pinecone") {
-    return;
-  }
-
   await pineconeIndex().deleteOne({ id: itemId });
-}
-
-export function supportsMissingEmbeddingReindex(): boolean {
-  return env.searchProvider !== "pinecone";
 }

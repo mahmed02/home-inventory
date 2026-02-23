@@ -1,7 +1,7 @@
 import { pool } from "../db/pool";
 import { ItemRow } from "../types";
 import { isUuid } from "../utils";
-import { supportsMissingEmbeddingReindex, upsertItemEmbedding } from "./itemEmbeddings";
+import { upsertItemEmbedding } from "./itemEmbeddings";
 
 export type ReindexItemEmbeddingsMode = "missing" | "all";
 
@@ -79,33 +79,16 @@ function normalizeMaxBatches(maxBatches: number | null | undefined): number | nu
 }
 
 async function loadBatch(
-  mode: ReindexItemEmbeddingsMode,
+  _mode: ReindexItemEmbeddingsMode,
   afterId: string | null,
   batchSize: number,
   queryable: Pick<typeof pool, "query">
 ): Promise<ItemRow[]> {
-  const missingModeSupported = supportsMissingEmbeddingReindex();
-  if (mode === "all" || (mode === "missing" && !missingModeSupported)) {
-    const result = await queryable.query<ItemRow>(
-      `
-      SELECT i.*
-      FROM items i
-      WHERE ($1::uuid IS NULL OR i.id > $1::uuid)
-      ORDER BY i.id ASC
-      LIMIT $2
-      `,
-      [afterId, batchSize]
-    );
-    return result.rows;
-  }
-
   const result = await queryable.query<ItemRow>(
     `
     SELECT i.*
     FROM items i
-    LEFT JOIN item_embeddings ie ON ie.item_id = i.id
-    WHERE ie.item_id IS NULL
-      AND ($1::uuid IS NULL OR i.id > $1::uuid)
+    WHERE ($1::uuid IS NULL OR i.id > $1::uuid)
     ORDER BY i.id ASC
     LIMIT $2
     `,
