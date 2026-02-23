@@ -83,6 +83,54 @@ jobs:
             fi
           }
 
+          validate_app_dir() {
+            local app_dir_value="$1"
+            if [[ -z "${app_dir_value}" ]]; then
+              echo "APP_DIR cannot be empty" >&2
+              exit 1
+            fi
+            if [[ "${app_dir_value}" != /* ]]; then
+              echo "APP_DIR must be an absolute path" >&2
+              exit 1
+            fi
+            if [[ "${app_dir_value}" == -* ]]; then
+              echo "APP_DIR cannot start with '-'" >&2
+              exit 1
+            fi
+            if [[ "${app_dir_value}" == *".."* ]]; then
+              echo "APP_DIR cannot contain '..'" >&2
+              exit 1
+            fi
+            if [[ ! "${app_dir_value}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+              echo "APP_DIR contains invalid characters" >&2
+              exit 1
+            fi
+          }
+
+          validate_process_name() {
+            local process_name_value="$1"
+            if [[ -z "${process_name_value}" ]]; then
+              echo "PROCESS_NAME cannot be empty" >&2
+              exit 1
+            fi
+            if [[ "${process_name_value}" == -* ]]; then
+              echo "PROCESS_NAME cannot start with '-'" >&2
+              exit 1
+            fi
+            if [[ ! "${process_name_value}" =~ ^[A-Za-z0-9._:-]+$ ]]; then
+              echo "PROCESS_NAME contains invalid characters" >&2
+              exit 1
+            fi
+          }
+
+          if [[ "${DISPATCH_ACTION}" != "deploy" && "${DISPATCH_ACTION}" != "rollback" ]]; then
+            echo "Unsupported action: ${DISPATCH_ACTION}" >&2
+            exit 1
+          fi
+
+          validate_app_dir "${APP_DIR}"
+          validate_process_name "${PROCESS_NAME}"
+
           if [[ "${DISPATCH_ACTION}" == "rollback" ]]; then
             if [[ -z "${DISPATCH_REF}" ]]; then
               echo "Rollback requires workflow input: ref" >&2
@@ -96,11 +144,13 @@ jobs:
             COMMAND="cd ${APP_DIR} && git -c safe.directory=${APP_DIR} fetch --all --prune && git -c safe.directory=${APP_DIR} checkout -- '${DEPLOY_REF}' && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} DEPLOY_REF='${DEPLOY_REF}' PROCESS_NAME='${PROCESS_NAME}' ./scripts/deploy.sh"
           fi
 
+          PARAMETERS_JSON=$(jq -cn --arg cmd "${COMMAND}" '{commands: [$cmd]}')
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${EC2_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
             --comment "home_inventory ${DISPATCH_ACTION} ${GITHUB_RUN_ID}" \
-            --parameters commands="${COMMAND}" \
+            --parameters "${PARAMETERS_JSON}" \
             --query 'Command.CommandId' \
             --output text)
 
