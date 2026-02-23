@@ -55,6 +55,20 @@ normalize_api_permissions() {
   done
 }
 
+remove_node_modules_dir() {
+  local target="$APP_DIR/api/node_modules"
+  if [[ ! -d "$target" ]]; then
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    sudo rm -rf "$target"
+    return
+  fi
+
+  rm -rf "$target"
+}
+
 echo "[deploy] Fetching repository updates"
 git_safe fetch --all --prune
 
@@ -69,6 +83,9 @@ git_safe checkout "$DEPLOY_REF"
 
 echo "[deploy] Normalizing API directory ownership"
 normalize_api_permissions
+
+echo "[deploy] Removing existing node_modules to avoid stale permission artifacts"
+remove_node_modules_dir
 
 if [[ -f "api/package-lock.json" ]]; then
   echo "[deploy] Installing API dependencies with npm ci"
