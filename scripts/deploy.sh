@@ -27,6 +27,12 @@ git_safe() {
 echo "[deploy] Fetching repository updates"
 git_safe fetch --all --prune
 
+if [[ -n "$(git_safe status --porcelain --untracked-files=all)" ]]; then
+  stash_name="deploy-autostash-$(date -u +%Y%m%dT%H%M%SZ)"
+  echo "[deploy] Working tree not clean; stashing local changes as ${stash_name}"
+  git_safe stash push --include-untracked --message "${stash_name}" >/dev/null
+fi
+
 echo "[deploy] Checking out ref: $DEPLOY_REF"
 git_safe checkout "$DEPLOY_REF"
 
