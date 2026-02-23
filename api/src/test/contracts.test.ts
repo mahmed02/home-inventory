@@ -810,6 +810,50 @@ test("GET /api/items/lookup returns Siri response shape", async () => {
   assert.ok(payload.confidence >= 0 && payload.confidence <= 1);
 });
 
+test("GET /api/items/lookup supports 'where are my ...' phrasing", async () => {
+  const root = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const closet = await request("/locations", {
+    method: "POST",
+    body: { name: "Hall Closet", code: "C1", type: "closet", parent_id: rootId },
+  });
+  assert.equal(closet.status, 201);
+  const closetId = (closet.json as { id: string }).id;
+
+  const item = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Winter Gloves",
+      description: "Black insulated pair",
+      keywords: ["gloves", "winter", "snow"],
+      location_id: closetId,
+    },
+  });
+  assert.equal(item.status, 201);
+
+  const lookup = await request("/api/items/lookup?q=where%20are%20my%20winter%20gloves");
+  assert.equal(lookup.status, 200);
+
+  const payload = lookup.json as {
+    intent: string;
+    fallback: boolean;
+    item: string | null;
+    location_path: string | null;
+    answer: string;
+  };
+
+  assert.equal(payload.intent, "find_item");
+  assert.equal(payload.fallback, false);
+  assert.equal(payload.item, "Winter Gloves");
+  assert.match(payload.location_path ?? "", /^House > Hall Closet$/);
+  assert.match(payload.answer, /Winter Gloves is in House > Hall Closet/i);
+});
+
 test("GET /api/items/lookup maps list-location intent and returns location summary", async () => {
   const root = await request("/locations", {
     method: "POST",

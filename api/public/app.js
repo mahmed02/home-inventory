@@ -1117,17 +1117,26 @@ async function askAssistant() {
   setStatus("Asking assistant...");
   try {
     const payload = await fetchJson(`/api/items/lookup?q=${encodeURIComponent(q)}`);
+    const hasModernNliShape = payload && typeof payload.intent === "string";
     const answer =
       payload && typeof payload.answer === "string"
         ? payload.answer
-        : payload && typeof payload.notes === "string"
-          ? payload.notes
-          : "I could not generate a response.";
-    const intent = payload && typeof payload.intent === "string" ? payload.intent : "unknown";
+        : payload &&
+            typeof payload.item === "string" &&
+            payload.item &&
+            typeof payload.location_path === "string" &&
+            payload.location_path
+          ? `${payload.item} is in ${payload.location_path}.`
+          : payload && typeof payload.notes === "string"
+            ? payload.notes
+            : "I could not generate a response.";
+    const intent = hasModernNliShape ? payload.intent : "legacy_lookup";
     const confidence =
       payload && typeof payload.confidence === "number" ? payload.confidence.toFixed(2) : "n/a";
     const fallback =
-      payload && typeof payload.fallback === "boolean" ? String(payload.fallback) : "false";
+      payload && typeof payload.fallback === "boolean"
+        ? String(payload.fallback)
+        : String(!(payload && typeof payload.item === "string" && payload.item));
 
     pushChatEntry("assistant", answer, `intent=${intent} confidence=${confidence} fallback=${fallback}`);
     setStatus("Assistant response ready.");

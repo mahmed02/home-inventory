@@ -40,6 +40,7 @@ function normalizePunctuation(value: string): string {
 
 function cleanupSubject(raw: string): string {
   return normalizePunctuation(raw)
+    .replace(/^(is|are|was|were)\s+/i, "")
     .replace(/^(the|a|an|my|our|any)\s+/i, "")
     .replace(/\s+(please|in inventory|in the inventory)$/i, "")
     .trim();
@@ -90,7 +91,9 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
     };
   }
 
-  const whereMatch = normalizedQuery.match(/^(?:where(?:'s| is)?|locate|find)\s+(.+)$/i);
+  const whereMatch = normalizedQuery.match(
+    /^(?:where\s+(?:is|are|was|were)|where's|where can i find|locate|find)\s+(.+)$/i
+  );
   if (whereMatch) {
     const subject = cleanupSubject(whereMatch[1]);
     return {
