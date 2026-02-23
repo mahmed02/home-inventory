@@ -8,6 +8,7 @@ import { Pool } from "pg";
 
 type AppModule = typeof import("../app");
 type MigrationsModule = typeof import("../db/migrations");
+type RedirectMode = "follow" | "error" | "manual";
 
 const testEnvPath = path.resolve(__dirname, "../../.env.test");
 const defaultEnvPath = path.resolve(__dirname, "../../.env");
@@ -46,8 +47,9 @@ async function request(
     body?: unknown;
     token?: string;
     headers?: Record<string, string>;
+    redirect?: RedirectMode;
   } = {}
-): Promise<{ status: number; json: unknown }> {
+): Promise<{ status: number; json: unknown; headers: { get(name: string): string | null } }> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers ?? {}),
@@ -60,10 +62,18 @@ async function request(
     method: options.method ?? "GET",
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
+    redirect: options.redirect,
   });
 
   const text = await response.text();
-  const parsed = text.length > 0 ? (JSON.parse(text) as unknown) : null;
+  let parsed: unknown = null;
+  if (text.length > 0) {
+    try {
+      parsed = JSON.parse(text) as unknown;
+    } catch {
+      parsed = text;
+    }
+  }
 
   let json: unknown = parsed;
   if (parsed && typeof parsed === "object" && "ok" in parsed) {
@@ -80,7 +90,7 @@ async function request(
     }
   }
 
-  return { status: response.status, json };
+  return { status: response.status, json, headers: response.headers };
 }
 
 async function resetDatabase(): Promise<void> {
@@ -333,6 +343,74 @@ test("GET /locations/:id/qr enforces owner scope", async () => {
   const outsiderQr = await request(`/locations/${ownerRootId}/qr`, { token: outsiderToken });
   assert.equal(outsiderQr.status, 404);
   assert.deepEqual(outsiderQr.json, { error: "Location not found" });
+});
+
+test("GET /scan/location/:code redirects to scoped location context", async () => {
+  const house = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(house.status, 201);
+  const houseId = (house.json as { id: string }).id;
+
+  const qr = await request(`/locations/${houseId}/qr`);
+  assert.equal(qr.status, 200);
+  const qrCode = (qr.json as { qr_code: string }).qr_code;
+
+  const scan = await request(`/scan/location/${qrCode}`, { redirect: "manual" });
+  assert.equal(scan.status, 302);
+  const locationHeader = scan.headers.get("location");
+  assert.equal(
+    locationHeader,
+    `/?location_id=${encodeURIComponent(houseId)}&scan_code=${encodeURIComponent(qrCode)}`
+  );
+});
+
+test("GET /scan/location/:code?format=json enforces access scope", async () => {
+  const owner = await request("/auth/register", {
+    method: "POST",
+    body: { email: "scan-owner@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(owner.status, 201);
+  const ownerToken = (owner.json as { token: string }).token;
+
+  const outsider = await request("/auth/register", {
+    method: "POST",
+    body: { email: "scan-outsider@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(outsider.status, 201);
+  const outsiderToken = (outsider.json as { token: string }).token;
+
+  const ownerRoot = await request("/locations", {
+    method: "POST",
+    token: ownerToken,
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(ownerRoot.status, 201);
+  const ownerRootId = (ownerRoot.json as { id: string }).id;
+
+  const ownerQr = await request(`/locations/${ownerRootId}/qr`, { token: ownerToken });
+  assert.equal(ownerQr.status, 200);
+  const ownerCode = (ownerQr.json as { qr_code: string }).qr_code;
+
+  const ownerScan = await request(`/scan/location/${ownerCode}?format=json`, { token: ownerToken });
+  assert.equal(ownerScan.status, 200);
+  const ownerScanJson = ownerScan.json as {
+    qr_code: string;
+    location_id: string;
+    path: string;
+    scan_path: string;
+  };
+  assert.equal(ownerScanJson.qr_code, ownerCode);
+  assert.equal(ownerScanJson.location_id, ownerRootId);
+  assert.match(ownerScanJson.path, /^House$/);
+  assert.equal(ownerScanJson.scan_path, `/scan/location/${ownerCode}`);
+
+  const outsiderScan = await request(`/scan/location/${ownerCode}?format=json`, {
+    token: outsiderToken,
+  });
+  assert.equal(outsiderScan.status, 404);
+  assert.deepEqual(outsiderScan.json, { error: "Scanned location not found" });
 });
 
 test("POST /locations/:id/move-impact previews affected items and paths", async () => {

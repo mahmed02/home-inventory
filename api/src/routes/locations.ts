@@ -411,6 +411,76 @@ locationsRouter.get("/locations/:id/qr", async (req, res) => {
   }
 });
 
+locationsRouter.get("/scan/location/:code([0-9a-fA-F-]{36})", async (req, res) => {
+  const code = req.params.code;
+  if (!isUuid(code)) {
+    return sendValidationError(res, "Invalid scan code");
+  }
+
+  const format = normalizeOptionalText(req.query.format)?.toLowerCase() ?? "";
+
+  try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
+    const locationScope = inventoryScopeSql(scope, "l.household_id", "l.owner_user_id", 2);
+    const resolved = await pool.query<{ location_id: string; location_name: string }>(
+      `
+      SELECT l.id AS location_id, l.name AS location_name
+      FROM location_qr_codes q
+      JOIN locations l ON l.id = q.location_id
+      WHERE q.code = $1 AND ${locationScope.sql}
+      LIMIT 1
+      `,
+      [code, ...locationScope.params]
+    );
+
+    if (resolved.rowCount === 0) {
+      return sendNotFound(res, "Scanned location not found");
+    }
+
+    const locationId = resolved.rows[0].location_id;
+    const pathRootScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const pathRecursiveScope = inventoryScopeSql(scope, "l.household_id", "l.owner_user_id", 2);
+    const pathResult = await pool.query<{ path: string }>(
+      `
+      WITH RECURSIVE ancestors AS (
+        SELECT id, parent_id, name, 1 AS depth
+        FROM locations
+        WHERE id = $1 AND ${pathRootScope.sql}
+        UNION ALL
+        SELECT l.id, l.parent_id, l.name, ancestors.depth + 1
+        FROM locations l
+        JOIN ancestors ON ancestors.parent_id = l.id
+        WHERE ${pathRecursiveScope.sql}
+      )
+      SELECT string_agg(name, ' > ' ORDER BY depth DESC) AS path
+      FROM ancestors
+      `,
+      [locationId, ...pathRootScope.params]
+    );
+
+    const { scanPath, scanUrl } = buildLocationScanPayload(code);
+    if (format === "json") {
+      return res.status(200).json({
+        qr_code: code,
+        location_id: locationId,
+        location_name: resolved.rows[0].location_name,
+        path: pathResult.rows[0]?.path ?? resolved.rows[0].location_name,
+        scan_path: scanPath,
+        scan_url: scanUrl,
+      });
+    }
+
+    const redirectPath = `/?location_id=${encodeURIComponent(locationId)}&scan_code=${encodeURIComponent(code)}`;
+    return res.redirect(302, redirectPath);
+  } catch (error) {
+    return sendInternalError(error, res);
+  }
+});
+
 locationsRouter.post("/locations/:id/move-impact", async (req, res) => {
   const id = req.params.id;
   if (!isUuid(id)) {

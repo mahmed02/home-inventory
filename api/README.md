@@ -121,6 +121,7 @@ For the full step-by-step runbook, use:
 - `GET /items/search/semantic?q=&mode=&limit=&offset=`
 - `GET /api/items/lookup?q=`
 - `GET /shortcut/find-item?q=`
+- `GET /scan/location/:code`
 - `GET /inventory/tree`
 - `GET /export/inventory`
 - `POST /import/inventory`

@@ -656,6 +656,30 @@ function updateActionState() {
   openEditBtn.textContent = "Edit Selected";
 }
 
+function applyLocationSelectionFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const locationIdRaw = params.get("location_id");
+  const locationId = locationIdRaw ? locationIdRaw.trim() : "";
+  if (!locationId) {
+    return false;
+  }
+
+  if (!locationMap.has(locationId)) {
+    setStatus("Requested location is not available in this account/household.");
+    return true;
+  }
+
+  selectLocation(locationId);
+  const scanCodeRaw = params.get("scan_code");
+  const scanCode = scanCodeRaw ? scanCodeRaw.trim() : "";
+  if (scanCode) {
+    setStatus("Opened location from scanned QR.");
+  } else {
+    setStatus("Opened location from URL.");
+  }
+  return true;
+}
+
 function openModal(modalEl) {
   if (!modalEl) {
     return;
@@ -2041,8 +2065,11 @@ window.addEventListener("load", async () => {
     await refreshHouseholds();
     hideEditors();
     await refreshAll();
+    const appliedLocationSelection = applyLocationSelectionFromUrl();
     updateActionState();
-    setStatus("Ready.");
+    if (!appliedLocationSelection) {
+      setStatus("Ready.");
+    }
   } catch (error) {
     if (String(error.message || "").toLowerCase().includes("authentication")) {
       setStatus("Sign in to load inventory.");

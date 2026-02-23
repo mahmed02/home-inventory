@@ -17,9 +17,9 @@ Ticket status values:
 
 ## Active Queue (Current)
 
-1. `10-02` Scan-to-View Endpoint + Routing (`todo`) — next up
-2. `10-03` Verification Mode (`todo`) — depends on `10-02`
-3. `11-01` Mobile Architecture ADR + Bootstrap (`todo`) — queued after Phase 10
+1. `10-03` Verification Mode (`todo`) — next up
+2. `11-01` Mobile Architecture ADR + Bootstrap (`todo`) — queued after Phase 10
+3. `11-02` Shared API Client + Auth Integration (`todo`)
 
 ---
 
@@ -295,7 +295,7 @@ Status: `done`
   - Each location has stable QR target URL/code payload.
 
 ## 10-02) Scan-to-View Endpoint + Routing
-Status: `todo`
+Status: `done`
 - Depends on: `10-01`
 - Scope:
   - Resolve scanned QR to location page with auth checks.
@@ -360,8 +360,8 @@ Status: `todo`
 
 ## Suggested Next Batch
 
-1. `10-02` Scan-to-View Endpoint + Routing
-2. `10-03` Verification Mode
-3. `11-01` Mobile Architecture ADR + Bootstrap
-4. `11-02` Shared API Client + Auth Integration
-5. `11-03` Local-Only Mode Data Layer
+1. `10-03` Verification Mode
+2. `11-01` Mobile Architecture ADR + Bootstrap
+3. `11-02` Shared API Client + Auth Integration
+4. `11-03` Local-Only Mode Data Layer
+5. `11-04` Cloud Sync Offline Queue + Reconciliation
