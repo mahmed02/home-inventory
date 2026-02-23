@@ -69,6 +69,12 @@
             <button id="refreshHouseholdsBtn" type="button">Refresh</button>
           </div>
         </div>
+        <ol class="setup-list">
+          <li>Create a household as the owner account.</li>
+          <li>Invite another account by email with a role.</li>
+          <li>Sign in as that account and accept using the invitation token.</li>
+          <li>Owners can later change roles or remove members.</li>
+        </ol>
 
         <div class="household-top">
           <div class="stack">
@@ -98,6 +104,14 @@
               </select>
               <button id="inviteMemberBtn" type="submit">Send Invite</button>
               <p id="inviteTokenHint" class="hint"></p>
+              <button id="copyInviteTokenBtn" type="button" hidden>Copy Invite Token</button>
+            </form>
+
+            <form id="acceptInviteForm" class="stack household-invite">
+              <h3>Accept Invitation</h3>
+              <input id="acceptInviteToken" type="text" placeholder="Invitation token" required />
+              <button id="acceptInviteBtn" type="submit">Accept Invite</button>
+              <p class="hint">Use the account that matches the invited email address.</p>
             </form>
 
             <div class="stack">

@@ -179,6 +179,15 @@ button.danger {
   flex-wrap: wrap;
 }
 
+.setup-list {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+
 .household-top {
   display: grid;
   grid-template-columns: 1.1fr 1fr;

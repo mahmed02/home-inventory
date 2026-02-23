@@ -38,6 +38,10 @@ const inviteMemberBtn = document.getElementById("inviteMemberBtn");
 const inviteEmailInput = document.getElementById("inviteEmail");
 const inviteRoleSelect = document.getElementById("inviteRole");
 const inviteTokenHintEl = document.getElementById("inviteTokenHint");
+const copyInviteTokenBtn = document.getElementById("copyInviteTokenBtn");
+const acceptInviteForm = document.getElementById("acceptInviteForm");
+const acceptInviteTokenInput = document.getElementById("acceptInviteToken");
+const acceptInviteBtn = document.getElementById("acceptInviteBtn");
 const householdMembersEl = document.getElementById("householdMembers");
 const householdInvitationsEl = document.getElementById("householdInvitations");
 
@@ -132,6 +136,7 @@ let authUser = null;
 let households = [];
 let householdMembers = [];
 let householdInvitations = [];
+let latestInviteToken = "";
 let activeHouseholdId = "";
 let activeHouseholdRole = "";
 let refreshingHouseholds = false;
@@ -165,6 +170,46 @@ function setStatus(message) {
 
 function setAuthStateHint(message) {
   authStateHintEl.textContent = message;
+}
+
+function setInviteToken(token) {
+  latestInviteToken = token || "";
+  if (inviteTokenHintEl) {
+    inviteTokenHintEl.textContent = latestInviteToken
+      ? `Invitation token (share securely): ${latestInviteToken}`
+      : "";
+  }
+
+  if (copyInviteTokenBtn) {
+    copyInviteTokenBtn.hidden = !latestInviteToken;
+    copyInviteTokenBtn.disabled = !latestInviteToken;
+  }
+}
+
+async function copyInviteTokenToClipboard() {
+  if (!latestInviteToken) {
+    setStatus("No invitation token available to copy.");
+    return;
+  }
+
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      await navigator.clipboard.writeText(latestInviteToken);
+    } else {
+      const temp = document.createElement("textarea");
+      temp.value = latestInviteToken;
+      temp.setAttribute("readonly", "readonly");
+      temp.style.position = "fixed";
+      temp.style.left = "-9999px";
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand("copy");
+      temp.remove();
+    }
+    setStatus("Invitation token copied.");
+  } catch (error) {
+    setStatus(`Unable to copy invitation token: ${error.message}`);
+  }
 }
 
 function persistAuthSession() {
@@ -214,6 +259,7 @@ function clearAuthSession() {
   households = [];
   householdMembers = [];
   householdInvitations = [];
+  setInviteToken("");
   activeHouseholdId = "";
   activeHouseholdRole = "";
   localStorage.removeItem(ACTIVE_HOUSEHOLD_STORAGE_KEY);
@@ -286,7 +332,7 @@ function renderHouseholdPanel() {
     renderManagementListEmpty(householdMembersEl, "No household selected.");
     renderManagementListEmpty(householdInvitationsEl, "No household selected.");
     householdSelect.innerHTML = '<option value="">No household selected</option>';
-    inviteTokenHintEl.textContent = "";
+    setInviteToken("");
     updateActionState();
     return;
   }
@@ -296,7 +342,7 @@ function renderHouseholdPanel() {
     householdSelect.innerHTML = '<option value="">No household selected</option>';
     renderManagementListEmpty(householdMembersEl, "No members to show.");
     renderManagementListEmpty(householdInvitationsEl, "No invitations to show.");
-    inviteTokenHintEl.textContent = "";
+    setInviteToken("");
     updateActionState();
     return;
   }
@@ -320,6 +366,9 @@ function renderHouseholdPanel() {
   }
 
   householdRoleHintEl.textContent = `Role: ${selectedHousehold.role}`;
+  if (selectedHousehold.role !== "owner" && latestInviteToken) {
+    setInviteToken("");
+  }
 
   if (!householdMembers.length) {
     renderManagementListEmpty(householdMembersEl, "No members to show.");
@@ -1996,14 +2045,14 @@ inviteMemberForm.addEventListener("submit", async (event) => {
   }
 
   inviteMemberBtn.disabled = true;
-  inviteTokenHintEl.textContent = "";
+  setInviteToken("");
   try {
     const payload = await fetchJson(`/households/${activeHouseholdId}/invitations`, {
       method: "POST",
       body: JSON.stringify({ email, role }),
     });
     inviteMemberForm.reset();
-    inviteTokenHintEl.textContent = `Invitation token (share securely): ${payload.invitation_token}`;
+    setInviteToken(payload.invitation_token || "");
     await refreshHouseholdMembersAndInvites();
     setStatus(`Invitation created for ${email}.`);
   } catch (error) {
@@ -2012,6 +2061,42 @@ inviteMemberForm.addEventListener("submit", async (event) => {
     inviteMemberBtn.disabled = false;
   }
 });
+
+if (copyInviteTokenBtn) {
+  copyInviteTokenBtn.addEventListener("click", () => {
+    void copyInviteTokenToClipboard();
+  });
+}
+
+if (acceptInviteForm && acceptInviteTokenInput && acceptInviteBtn) {
+  acceptInviteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const token = acceptInviteTokenInput.value.trim();
+    if (!token) {
+      setStatus("Invitation token is required.");
+      return;
+    }
+
+    acceptInviteBtn.disabled = true;
+    try {
+      const payload = await fetchJson("/households/invitations/accept", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      });
+      acceptInviteForm.reset();
+      setInviteToken("");
+      await refreshHouseholds(payload.household_id || "");
+      hideEditors();
+      await refreshAll();
+      setStatus(`Invitation accepted. Assigned role: ${payload.role}.`);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      acceptInviteBtn.disabled = false;
+    }
+  });
+}
 
 householdMembersEl.addEventListener("click", async (event) => {
   const saveBtn = event.target.closest("[data-member-save-id]");
