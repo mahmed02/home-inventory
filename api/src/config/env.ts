@@ -19,6 +19,7 @@ const s3Bucket = process.env.S3_BUCKET ?? "";
 const basicAuthUser = process.env.BASIC_AUTH_USER ?? "";
 const basicAuthPass = process.env.BASIC_AUTH_PASS ?? "";
 const sessionTtlHoursRaw = Number(process.env.SESSION_TTL_HOURS ?? "720");
+const searchProviderRaw = (process.env.SEARCH_PROVIDER ?? "postgres").trim().toLowerCase();
 const embeddingsProvider = (process.env.EMBEDDINGS_PROVIDER ?? "deterministic")
   .trim()
   .toLowerCase();
@@ -27,6 +28,12 @@ const corsAllowOrigins = (process.env.CORS_ALLOW_ORIGINS ?? "")
   .split(",")
   .map((entry) => entry.trim())
   .filter((entry) => entry.length > 0);
+const pineconeApiKey = process.env.PINECONE_API_KEY ?? "";
+const pineconeIndexName = process.env.PINECONE_INDEX_NAME ?? "";
+const pineconeIndexHost = process.env.PINECONE_INDEX_HOST ?? "";
+const pineconeNamespace = process.env.PINECONE_NAMESPACE ?? "home-inventory";
+const pineconeTextField = process.env.PINECONE_TEXT_FIELD ?? "chunk_text";
+const pineconeRerankModel = process.env.PINECONE_RERANK_MODEL ?? "";
 
 export function resolveEnableDevRoutes(): boolean {
   if (process.env.ENABLE_DEV_ROUTES === "true") {
@@ -58,9 +65,19 @@ export function resolveRequireUserAccounts(): boolean {
   return false;
 }
 
+export type SearchProvider = "postgres" | "pinecone";
+
+export function resolveSearchProvider(): SearchProvider {
+  if (searchProviderRaw === "postgres" || searchProviderRaw === "pinecone") {
+    return searchProviderRaw;
+  }
+  throw new Error("SEARCH_PROVIDER must be one of: postgres, pinecone");
+}
+
 const enableDevRoutes = resolveEnableDevRoutes();
 const requireAuth = resolveRequireAuth();
 const requireUserAccounts = resolveRequireUserAccounts();
+const searchProvider = resolveSearchProvider();
 const sessionTtlHours = Number.isFinite(sessionTtlHoursRaw)
   ? Math.min(Math.max(Math.trunc(sessionTtlHoursRaw), 1), 24 * 365)
   : 720;
@@ -82,12 +99,17 @@ if (requireAuth && requireUserAccounts) {
   );
 }
 
+if (searchProvider === "pinecone" && (!pineconeApiKey || !pineconeIndexName)) {
+  throw new Error("PINECONE_API_KEY and PINECONE_INDEX_NAME are required when SEARCH_PROVIDER=pinecone");
+}
+
 export const env = {
   port,
   databaseUrl,
   enableDevRoutes,
   requireAuth,
   requireUserAccounts,
+  searchProvider,
   sessionTtlHours,
   embeddingsProvider,
   embeddingDimensions,
@@ -97,4 +119,10 @@ export const env = {
   awsRegion,
   s3Bucket,
   corsAllowOrigins,
+  pineconeApiKey,
+  pineconeIndexName,
+  pineconeIndexHost,
+  pineconeNamespace,
+  pineconeTextField,
+  pineconeRerankModel,
 };

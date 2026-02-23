@@ -14,7 +14,7 @@ import {
 import { pool } from "../db/pool";
 import { env } from "../config/env";
 import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
-import { upsertItemEmbedding } from "../search/itemEmbeddings";
+import { deleteItemEmbedding, upsertItemEmbedding } from "../search/itemEmbeddings";
 import {
   isSemanticSearchMode,
   semanticItemSearch,
@@ -330,6 +330,12 @@ itemsRouter.delete("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     ]);
     if (result.rowCount === 0) {
       return sendNotFound(res, "Item not found");
+    }
+
+    try {
+      await deleteItemEmbedding(id);
+    } catch (indexError) {
+      console.error("Search index delete failed", indexError);
     }
 
     return res.status(204).send();

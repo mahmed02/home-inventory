@@ -1,7 +1,7 @@
 import { pool } from "../db/pool";
 import { ItemRow } from "../types";
 import { isUuid } from "../utils";
-import { upsertItemEmbedding } from "./itemEmbeddings";
+import { supportsMissingEmbeddingReindex, upsertItemEmbedding } from "./itemEmbeddings";
 
 export type ReindexItemEmbeddingsMode = "missing" | "all";
 
@@ -84,7 +84,8 @@ async function loadBatch(
   batchSize: number,
   queryable: Pick<typeof pool, "query">
 ): Promise<ItemRow[]> {
-  if (mode === "all") {
+  const missingModeSupported = supportsMissingEmbeddingReindex();
+  if (mode === "all" || (mode === "missing" && !missingModeSupported)) {
     const result = await queryable.query<ItemRow>(
       `
       SELECT i.*

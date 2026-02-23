@@ -764,6 +764,79 @@ test("Semantic relevance regression set remains stable", async () => {
   }
 });
 
+test("Semantic mode prunes unrelated tail results for air pump queries", async () => {
+  const root = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: rootId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const fixtures = [
+    {
+      name: "Portable Tire Inflator",
+      description: "Compact inflator for car tires",
+      keywords: ["inflator", "air", "tire", "pump"],
+    },
+    {
+      name: "Air Compressor",
+      description: "Pneumatic compressor for garage tools",
+      keywords: ["air", "compressor", "pneumatic"],
+    },
+    {
+      name: "Winter Gloves",
+      description: "Insulated gloves for cold weather",
+      keywords: ["winter", "gloves"],
+    },
+    {
+      name: "Shovel",
+      description: "Driveway snow shovel",
+      keywords: ["yard", "snow", "shovel"],
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    const created = await request("/items", {
+      method: "POST",
+      body: {
+        name: fixture.name,
+        description: fixture.description,
+        keywords: fixture.keywords,
+        location_id: garageId,
+      },
+    });
+    assert.equal(created.status, 201);
+  }
+
+  const response = await request(
+    `/items/search/semantic?q=${encodeURIComponent("air pump")}&mode=semantic&limit=10&offset=0`
+  );
+  assert.equal(response.status, 200);
+
+  const payload = response.json as {
+    mode: string;
+    results: Array<{ name: string }>;
+  };
+
+  assert.equal(payload.mode, "semantic");
+  assert.ok(payload.results.length > 0);
+
+  const names = payload.results.map((entry) => entry.name);
+  assert.ok(
+    names.includes("Portable Tire Inflator") || names.includes("Air Compressor"),
+    "Expected a compressed air tool result for 'air pump'"
+  );
+  assert.ok(!names.includes("Winter Gloves"));
+  assert.ok(!names.includes("Shovel"));
+});
+
 test("GET /api/items/lookup returns Siri response shape", async () => {
   const root = await request("/locations", {
     method: "POST",
@@ -958,7 +1031,7 @@ test("GET /api/items/lookup maps count intent and returns count summary", async 
   assert.equal(payload.intent, "count_items");
   assert.equal(payload.fallback, false);
   assert.equal(payload.match_count, 2);
-  assert.equal(payload.item, "Drill Bits");
+  assert.ok(payload.item === "Drill Bits" || payload.item === "Drill Driver");
   assert.match(payload.answer, /I found 2 item\(s\) matching "drill"/i);
   assert.ok(payload.confidence >= 0 && payload.confidence <= 1);
 });

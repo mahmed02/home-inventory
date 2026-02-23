@@ -1,13 +1,15 @@
 import { PoolClient } from "pg";
+import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { ItemRow } from "../types";
 import { resolveEmbeddingProvider } from "./embeddings";
+import { pineconeIndex, pineconeRecordFromItem } from "./pineconeClient";
 
 type Queryable = Pick<PoolClient, "query">;
 
 type ItemEmbeddingInput = Pick<
   ItemRow,
-  "id" | "name" | "description" | "keywords" | "owner_user_id" | "household_id"
+  "id" | "name" | "description" | "keywords" | "location_id" | "owner_user_id" | "household_id"
 >;
 
 function normalizeText(value: string | null | undefined): string {
@@ -30,7 +32,7 @@ export function itemEmbeddingSourceText(item: ItemEmbeddingInput): string {
     .join("\n");
 }
 
-export async function upsertItemEmbedding(
+async function upsertPostgresItemEmbedding(
   item: ItemEmbeddingInput,
   queryable: Queryable = pool
 ): Promise<void> {
@@ -66,4 +68,36 @@ export async function upsertItemEmbedding(
       sourceText,
     ]
   );
+}
+
+async function upsertPineconeItemEmbedding(item: ItemEmbeddingInput): Promise<void> {
+  const sourceText = itemEmbeddingSourceText(item);
+  const record = pineconeRecordFromItem(item, sourceText);
+  await pineconeIndex().upsertRecords({
+    records: [record],
+  });
+}
+
+export async function upsertItemEmbedding(
+  item: ItemEmbeddingInput,
+  queryable: Queryable = pool
+): Promise<void> {
+  if (env.searchProvider === "pinecone") {
+    await upsertPineconeItemEmbedding(item);
+    return;
+  }
+
+  await upsertPostgresItemEmbedding(item, queryable);
+}
+
+export async function deleteItemEmbedding(itemId: string): Promise<void> {
+  if (env.searchProvider !== "pinecone") {
+    return;
+  }
+
+  await pineconeIndex().deleteOne({ id: itemId });
+}
+
+export function supportsMissingEmbeddingReindex(): boolean {
+  return env.searchProvider !== "pinecone";
 }
