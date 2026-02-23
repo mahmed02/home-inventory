@@ -198,7 +198,7 @@ Status: `done`
   - Reindex job is resumable and idempotent.
 
 ## 7-03) Semantic Search API
-Status: `todo`
+Status: `done`
 - Depends on: `7-01`, `7-02`
 - Scope:
   - Add semantic retrieval endpoint and ranking strategy.

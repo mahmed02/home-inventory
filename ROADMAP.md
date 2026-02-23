@@ -143,7 +143,7 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - [x] Add embeddings column/store
 - [x] Generate embeddings on create/update
 - [x] Resumable backfill/reindex job for existing items
-- [ ] Similarity query + ranking
+- [x] Similarity query + ranking
 
 ### Phase 8 — Natural Language Interface
 - [ ] Chat-style query input

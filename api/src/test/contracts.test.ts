@@ -558,6 +558,125 @@ test("GET /items/search supports pagination and returns paths", async () => {
   assert.equal(page2Json.results.length, 1);
 });
 
+test("GET /items/search/semantic validates mode", async () => {
+  const invalid = await request("/items/search/semantic?q=tool&mode=unsupported");
+  assert.equal(invalid.status, 400);
+  assert.deepEqual(invalid.json, { error: "mode must be one of: hybrid, semantic, lexical" });
+});
+
+test("GET /items/search/semantic returns ranked results with stable pagination", async () => {
+  const root = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: rootId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const drillName = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Drill Alpha",
+      keywords: ["power"],
+      location_id: garageId,
+    },
+  });
+  assert.equal(drillName.status, 201);
+
+  const drillDescription = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Workshop Tool",
+      description: "Drill for concrete anchors",
+      keywords: ["tool"],
+      location_id: garageId,
+    },
+  });
+  assert.equal(drillDescription.status, 201);
+
+  const drillKeyword = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Bit Organizer",
+      keywords: ["drill", "bits"],
+      location_id: garageId,
+    },
+  });
+  assert.equal(drillKeyword.status, 201);
+
+  const unrelated = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Storage Bin",
+      description: "Plastic tote",
+      keywords: ["container"],
+      location_id: garageId,
+    },
+  });
+  assert.equal(unrelated.status, 201);
+
+  const page1 = await request("/items/search/semantic?q=drill&limit=2&offset=0");
+  assert.equal(page1.status, 200);
+  const page1Json = page1.json as {
+    results: Array<{
+      id: string;
+      name: string;
+      location_path: string;
+      score: number;
+      lexical_score: number;
+      semantic_score: number;
+    }>;
+    total: number;
+    limit: number;
+    offset: number;
+    mode: string;
+  };
+
+  assert.equal(page1Json.mode, "hybrid");
+  assert.equal(page1Json.total, 3);
+  assert.equal(page1Json.limit, 2);
+  assert.equal(page1Json.offset, 0);
+  assert.equal(page1Json.results.length, 2);
+  assert.equal(page1Json.results[0].name, "Drill Alpha");
+  assert.equal(page1Json.results[1].name, "Workshop Tool");
+  assert.match(page1Json.results[0].location_path, /^House > Garage$/);
+  assert.ok(page1Json.results[0].score >= page1Json.results[1].score);
+  assert.ok(page1Json.results[0].lexical_score >= page1Json.results[1].lexical_score);
+  assert.ok(page1Json.results[0].semantic_score > 0);
+
+  const page1Repeat = await request("/items/search/semantic?q=drill&limit=2&offset=0");
+  assert.equal(page1Repeat.status, 200);
+  const page1RepeatJson = page1Repeat.json as {
+    results: Array<{ id: string }>;
+  };
+  assert.deepEqual(
+    page1RepeatJson.results.map((entry) => entry.id),
+    page1Json.results.map((entry) => entry.id)
+  );
+
+  const page2 = await request("/items/search/semantic?q=drill&limit=2&offset=2");
+  assert.equal(page2.status, 200);
+  const page2Json = page2.json as {
+    results: Array<{ id: string; name: string }>;
+    total: number;
+    offset: number;
+  };
+
+  assert.equal(page2Json.total, 3);
+  assert.equal(page2Json.offset, 2);
+  assert.equal(page2Json.results.length, 1);
+  assert.equal(page2Json.results[0].name, "Bit Organizer");
+
+  const page1Ids = new Set(page1Json.results.map((entry) => entry.id));
+  assert.ok(!page1Ids.has(page2Json.results[0].id));
+});
+
 test("GET /api/items/lookup returns Siri response shape", async () => {
   const root = await request("/locations", {
     method: "POST",

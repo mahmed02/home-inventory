@@ -15,6 +15,11 @@ import { pool } from "../db/pool";
 import { env } from "../config/env";
 import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
 import { upsertItemEmbedding } from "../search/itemEmbeddings";
+import {
+  isSemanticSearchMode,
+  semanticItemSearch,
+  SemanticSearchMode,
+} from "../search/semanticSearch";
 import { ItemRow } from "../types";
 import {
   InventoryScope,
@@ -398,6 +403,59 @@ itemsRouter.get("/items/search", async (req, res) => {
     }));
 
     return res.status(200).json({ results, total, limit, offset });
+  } catch (error) {
+    return sendInternalError(error, res);
+  }
+});
+
+itemsRouter.get("/items/search/semantic", async (req, res) => {
+  const q = normalizeOptionalText(req.query.q);
+  if (!q) {
+    return sendValidationError(res, "q is required");
+  }
+
+  const modeRaw = normalizeOptionalText(req.query.mode)?.toLowerCase() ?? null;
+  let mode: SemanticSearchMode = "hybrid";
+  if (modeRaw) {
+    if (!isSemanticSearchMode(modeRaw)) {
+      return sendValidationError(res, "mode must be one of: hybrid, semantic, lexical");
+    }
+    mode = modeRaw;
+  }
+  const { limit, offset } = readLimitOffset(req);
+
+  try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
+    const searched = await semanticItemSearch({
+      scope,
+      query: q,
+      mode,
+      limit,
+      offset,
+    });
+
+    const results = searched.results.map((row) => ({
+      id: row.id,
+      name: row.name,
+      image_url: row.image_url,
+      thumbnail_url: deriveThumbnailUrlFromImageUrl(row.image_url, env.s3Bucket, env.awsRegion),
+      location_path: row.location_path,
+      score: row.score,
+      lexical_score: row.lexical_score,
+      semantic_score: row.semantic_score,
+    }));
+
+    return res.status(200).json({
+      results,
+      total: searched.total,
+      limit,
+      offset,
+      mode,
+    });
   } catch (error) {
     return sendInternalError(error, res);
   }

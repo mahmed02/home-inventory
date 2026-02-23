@@ -107,6 +107,7 @@ For the full step-by-step runbook, use:
 - `PATCH /items/:id`
 - `DELETE /items/:id`
 - `GET /items/search?q=&limit=&offset=`
+- `GET /items/search/semantic?q=&mode=&limit=&offset=`
 - `GET /api/items/lookup?q=`
 - `GET /shortcut/find-item?q=`
 - `GET /inventory/tree`
