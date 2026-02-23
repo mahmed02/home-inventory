@@ -24,9 +24,15 @@ app.use(securityHeaders);
 app.use(corsPolicy);
 app.use(requireBasicAuth);
 app.use(attachUserSession);
-app.use(requireUserSession);
 app.use(healthRouter);
 app.use(authRouter);
+app.use(express.static(publicDir));
+
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
+app.use(requireUserSession);
 app.use(householdsRouter);
 app.use(locationsRouter);
 app.use(itemsRouter);
@@ -35,10 +41,5 @@ app.use(uploadsRouter);
 app.use(inventoryRouter);
 app.use(exportRouter);
 app.use(devRouter);
-app.use(express.static(publicDir));
-
-app.get("/", (_req, res) => {
-  res.sendFile(path.join(publicDir, "index.html"));
-});
 
 export default app;
