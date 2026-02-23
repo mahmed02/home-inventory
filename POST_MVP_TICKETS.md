@@ -17,9 +17,9 @@ Ticket status values:
 
 ## Active Queue (Current)
 
-1. `10-03` Verification Mode (`todo`) — next up
-2. `11-01` Mobile Architecture ADR + Bootstrap (`todo`) — queued after Phase 10
-3. `11-02` Shared API Client + Auth Integration (`todo`)
+1. `11-01` Mobile Architecture ADR + Bootstrap (`todo`) — next up
+2. `11-02` Shared API Client + Auth Integration (`todo`) — depends on `11-01`
+3. `11-03` Local-Only Mode Data Layer (`todo`) — depends on `11-01`
 
 ---
 
@@ -303,7 +303,7 @@ Status: `done`
   - Valid QR opens the correct location context.
 
 ## 10-03) Verification Mode
-Status: `todo`
+Status: `done`
 - Depends on: `10-02`
 - Scope:
   - Add expected-vs-actual checklist mode for scanned locations.
@@ -360,8 +360,8 @@ Status: `todo`
 
 ## Suggested Next Batch
 
-1. `10-03` Verification Mode
-2. `11-01` Mobile Architecture ADR + Bootstrap
-3. `11-02` Shared API Client + Auth Integration
-4. `11-03` Local-Only Mode Data Layer
-5. `11-04` Cloud Sync Offline Queue + Reconciliation
+1. `11-01` Mobile Architecture ADR + Bootstrap
+2. `11-02` Shared API Client + Auth Integration
+3. `11-03` Local-Only Mode Data Layer
+4. `11-04` Cloud Sync Offline Queue + Reconciliation
+5. `11-05` Mode Toggle + Security Baseline

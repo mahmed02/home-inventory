@@ -51,6 +51,11 @@ const openEditBtn = document.getElementById("openEditBtn");
 const selectionHintEl = document.getElementById("selectionHint");
 const actionCreateLocationBtn = document.getElementById("actionCreateLocationBtn");
 const actionCreateItemBtn = document.getElementById("actionCreateItemBtn");
+const verificationPanelEl = document.getElementById("verificationPanel");
+const verificationSummaryEl = document.getElementById("verificationSummary");
+const verificationListEl = document.getElementById("verificationList");
+const refreshVerificationBtn = document.getElementById("refreshVerificationBtn");
+const exportDiscrepanciesBtn = document.getElementById("exportDiscrepanciesBtn");
 
 const createActionsModal = document.getElementById("createActionsModal");
 const createLocationModal = document.getElementById("createLocationModal");
@@ -131,6 +136,11 @@ let activeHouseholdId = "";
 let activeHouseholdRole = "";
 let refreshingHouseholds = false;
 let pendingLocationMove = null;
+let verificationRequestSeq = 0;
+let verificationChecklistLocationId = "";
+let verificationChecklistLocationPath = "";
+let verificationChecklistItems = [];
+const verificationStatusesByLocation = new Map();
 let itemHistoryRequestSeq = 0;
 let chatHistory = [];
 const MAX_CHAT_HISTORY = 20;
@@ -500,6 +510,217 @@ function formatScore(value) {
     return null;
   }
   return value.toFixed(3);
+}
+
+function csvCell(value) {
+  const raw = value == null ? "" : String(value);
+  if (!raw.includes(",") && !raw.includes('"') && !raw.includes("\n")) {
+    return raw;
+  }
+  return `"${raw.replaceAll('"', '""')}"`;
+}
+
+function slugifyFilePart(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+function downloadTextFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function verificationStatusMap(locationId) {
+  if (!verificationStatusesByLocation.has(locationId)) {
+    verificationStatusesByLocation.set(locationId, new Map());
+  }
+  return verificationStatusesByLocation.get(locationId);
+}
+
+function hideVerificationPanel() {
+  verificationRequestSeq += 1;
+  verificationChecklistLocationId = "";
+  verificationChecklistLocationPath = "";
+  verificationChecklistItems = [];
+
+  if (!verificationPanelEl || !verificationListEl || !verificationSummaryEl) {
+    return;
+  }
+
+  verificationPanelEl.hidden = true;
+  verificationSummaryEl.textContent = "Select a location to verify expected vs actual items.";
+  verificationListEl.innerHTML = "";
+}
+
+function updateVerificationSummary() {
+  if (!verificationSummaryEl || !verificationChecklistLocationId) {
+    return;
+  }
+
+  const statusMap = verificationStatusMap(verificationChecklistLocationId);
+  let found = 0;
+  let missing = 0;
+  let unmarked = 0;
+
+  for (const row of verificationChecklistItems) {
+    const status = statusMap.get(row.id) || "unmarked";
+    if (status === "found") {
+      found += 1;
+    } else if (status === "missing") {
+      missing += 1;
+    } else {
+      unmarked += 1;
+    }
+  }
+
+  const locationLabel = verificationChecklistLocationPath || "Selected location";
+  verificationSummaryEl.textContent = `${locationLabel}: ${verificationChecklistItems.length} expected, ${found} found, ${missing} missing, ${unmarked} unmarked.`;
+}
+
+function renderVerificationChecklist() {
+  if (!verificationListEl || !verificationChecklistLocationId) {
+    return;
+  }
+
+  if (!verificationChecklistItems.length) {
+    verificationListEl.innerHTML =
+      '<li class="management-empty">No expected items found under this location subtree.</li>';
+    updateVerificationSummary();
+    return;
+  }
+
+  const statusMap = verificationStatusMap(verificationChecklistLocationId);
+  verificationListEl.innerHTML = verificationChecklistItems
+    .map((row) => {
+      const current = statusMap.get(row.id) || "unmarked";
+      return `
+        <li class="management-item verify-item">
+          <div class="management-main">
+            <div class="management-title">${escapeHtml(row.name)}</div>
+            <div class="management-subtle">Expected at ${escapeHtml(row.location_path)}</div>
+            <div class="verify-meta">${escapeHtml(row.id)}</div>
+          </div>
+          <div class="management-actions">
+            <select data-verify-item-id="${escapeAttr(row.id)}">
+              <option value="unmarked"${current === "unmarked" ? " selected" : ""}>Unmarked</option>
+              <option value="found"${current === "found" ? " selected" : ""}>Found</option>
+              <option value="missing"${current === "missing" ? " selected" : ""}>Missing</option>
+            </select>
+          </div>
+        </li>
+      `;
+    })
+    .join("");
+
+  updateVerificationSummary();
+}
+
+async function loadVerificationChecklist(locationId) {
+  if (!verificationPanelEl || !verificationListEl || !verificationSummaryEl || !locationId) {
+    return;
+  }
+
+  const requestSeq = ++verificationRequestSeq;
+  verificationPanelEl.hidden = false;
+  verificationSummaryEl.textContent = "Loading verification checklist...";
+  verificationListEl.innerHTML = '<li class="management-empty">Loading checklist...</li>';
+
+  try {
+    const payload = await fetchJson(
+      `/locations/${encodeURIComponent(locationId)}/verification/checklist`
+    );
+
+    if (requestSeq !== verificationRequestSeq || selectedLocationId !== locationId) {
+      return;
+    }
+
+    verificationChecklistLocationId = locationId;
+    verificationChecklistLocationPath =
+      payload && payload.location && payload.location.path
+        ? String(payload.location.path)
+        : locationPathMap.get(locationId) || "";
+    verificationChecklistItems = payload && Array.isArray(payload.items) ? payload.items : [];
+
+    const statusMap = verificationStatusMap(locationId);
+    for (const row of verificationChecklistItems) {
+      if (!statusMap.has(row.id)) {
+        statusMap.set(row.id, "unmarked");
+      }
+    }
+
+    renderVerificationChecklist();
+  } catch (error) {
+    if (requestSeq !== verificationRequestSeq || selectedLocationId !== locationId) {
+      return;
+    }
+    verificationSummaryEl.textContent = `Unable to load checklist: ${error.message}`;
+    verificationListEl.innerHTML = '<li class="management-empty">Checklist unavailable.</li>';
+  }
+}
+
+function exportVerificationDiscrepancies() {
+  if (!verificationChecklistLocationId) {
+    setStatus("Select a location first.");
+    return;
+  }
+
+  const statusMap = verificationStatusMap(verificationChecklistLocationId);
+  const missingRows = verificationChecklistItems.filter(
+    (row) => (statusMap.get(row.id) || "unmarked") === "missing"
+  );
+
+  if (!missingRows.length) {
+    setStatus("No missing items to export.");
+    return;
+  }
+
+  const verifiedAt = new Date().toISOString();
+  const lines = [
+    [
+      "location_id",
+      "location_path",
+      "item_id",
+      "item_name",
+      "expected_location_path",
+      "status",
+      "verified_at",
+    ]
+      .map(csvCell)
+      .join(","),
+  ];
+
+  for (const row of missingRows) {
+    lines.push(
+      [
+        verificationChecklistLocationId,
+        verificationChecklistLocationPath,
+        row.id,
+        row.name,
+        row.location_path,
+        "missing",
+        verifiedAt,
+      ]
+        .map(csvCell)
+        .join(",")
+    );
+  }
+
+  const stamp = new Date().toISOString().replaceAll(":", "-");
+  const namePart = slugifyFilePart(verificationChecklistLocationPath) || "location";
+  const filename = `discrepancies-${namePart}-${stamp}.csv`;
+  downloadTextFile(filename, `${lines.join("\n")}\n`, "text/csv;charset=utf-8");
+  setStatus(`Exported ${missingRows.length} missing item(s).`);
 }
 
 function formatTimestamp(value) {
@@ -1012,6 +1233,7 @@ function hideEditors() {
 
   editLocationForm.hidden = true;
   editItemForm.hidden = true;
+  hideVerificationPanel();
   hideItemHistoryPanel();
   locationEditorHint.textContent = "Select a location in the tree.";
   itemEditorHint.textContent = "Select an item in the tree.";
@@ -1032,6 +1254,7 @@ function selectLocation(locationId) {
   selectedItemId = null;
 
   editItemForm.hidden = true;
+  hideVerificationPanel();
   hideItemHistoryPanel();
   itemEditorHint.textContent = "Select an item in the tree.";
   itemBreadcrumbEl.textContent = "";
@@ -1048,6 +1271,7 @@ function selectLocation(locationId) {
 
   editLocParentSelect.dataset.current = location.parent_id || "";
   syncLocationSelectors();
+  void loadVerificationChecklist(location.id);
   updateActionState();
 
   renderTree();
@@ -1058,6 +1282,7 @@ function selectItem(itemId) {
   selectedLocationId = null;
 
   editLocationForm.hidden = true;
+  hideVerificationPanel();
   locationEditorHint.textContent = "Select a location in the tree.";
   locationBreadcrumbEl.textContent = "";
 
@@ -1646,6 +1871,42 @@ deleteItemBtn.addEventListener("click", async () => {
 refreshTreeBtn.addEventListener("click", () => {
   void refreshInventoryTree();
 });
+
+if (refreshVerificationBtn) {
+  refreshVerificationBtn.addEventListener("click", () => {
+    if (!selectedLocationId) {
+      setStatus("Select a location first.");
+      return;
+    }
+    void loadVerificationChecklist(selectedLocationId);
+  });
+}
+
+if (exportDiscrepanciesBtn) {
+  exportDiscrepanciesBtn.addEventListener("click", () => {
+    exportVerificationDiscrepancies();
+  });
+}
+
+if (verificationListEl) {
+  verificationListEl.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) {
+      return;
+    }
+    const itemId = target.getAttribute("data-verify-item-id");
+    if (!itemId || !verificationChecklistLocationId) {
+      return;
+    }
+    const next = target.value;
+    if (next !== "unmarked" && next !== "found" && next !== "missing") {
+      return;
+    }
+    const statusMap = verificationStatusMap(verificationChecklistLocationId);
+    statusMap.set(itemId, next);
+    updateVerificationSummary();
+  });
+}
 
 if (refreshItemHistoryBtn) {
   refreshItemHistoryBtn.addEventListener("click", () => {

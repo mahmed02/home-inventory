@@ -277,6 +277,20 @@ button.danger {
   margin: 0 4px;
 }
 
+.verify-item {
+  align-items: flex-start;
+}
+
+.verify-item select {
+  min-width: 120px;
+}
+
+.verify-meta {
+  font-family: Menlo, Monaco, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .plus-btn {
   width: 42px;
   min-width: 42px;

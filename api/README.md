@@ -109,6 +109,7 @@ For the full step-by-step runbook, use:
 - `GET /locations/tree`
 - `GET /locations/:id/path`
 - `GET /locations/:id/qr`
+- `GET /locations/:id/verification/checklist`
 - `PATCH /locations/:id`
 - `DELETE /locations/:id`
 - `POST /items`

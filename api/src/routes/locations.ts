@@ -481,6 +481,98 @@ locationsRouter.get("/scan/location/:code([0-9a-fA-F-]{36})", async (req, res) =
   }
 });
 
+locationsRouter.get("/locations/:id/verification/checklist", async (req, res) => {
+  const id = req.params.id;
+  if (!isUuid(id)) {
+    return sendValidationError(res, "Invalid location id");
+  }
+
+  try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
+    const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const recursiveScope = inventoryScopeSql(scope, "l.household_id", "l.owner_user_id", 2);
+    const itemScope = inventoryScopeSql(scope, "i.household_id", "i.owner_user_id", 2);
+
+    const location = await pool.query<{ id: string; name: string }>(
+      `
+      SELECT id, name
+      FROM locations
+      WHERE id = $1 AND ${locationScope.sql}
+      `,
+      [id, ...locationScope.params]
+    );
+
+    if (location.rowCount === 0) {
+      return sendNotFound(res, "Location not found");
+    }
+
+    const locationPath = await pool.query<{ path: string | null }>(
+      `
+      WITH RECURSIVE ancestors AS (
+        SELECT id, parent_id, name, 1 AS depth
+        FROM locations
+        WHERE id = $1 AND ${locationScope.sql}
+        UNION ALL
+        SELECT l.id, l.parent_id, l.name, ancestors.depth + 1
+        FROM locations l
+        JOIN ancestors ON ancestors.parent_id = l.id
+        WHERE ${recursiveScope.sql}
+      )
+      SELECT string_agg(name, ' > ' ORDER BY depth DESC) AS path
+      FROM ancestors
+      `,
+      [id, ...locationScope.params]
+    );
+
+    const checklist = await pool.query<{
+      id: string;
+      name: string;
+      location_id: string;
+      location_path: string;
+    }>(
+      `
+      WITH RECURSIVE subtree AS (
+        SELECT id, parent_id, name, name::text AS path
+        FROM locations
+        WHERE id = $1 AND ${locationScope.sql}
+        UNION ALL
+        SELECT l.id, l.parent_id, l.name, subtree.path || ' > ' || l.name
+        FROM locations l
+        JOIN subtree ON l.parent_id = subtree.id
+        WHERE ${recursiveScope.sql}
+      )
+      SELECT
+        i.id,
+        i.name,
+        i.location_id,
+        subtree.path AS location_path
+      FROM items i
+      JOIN subtree ON subtree.id = i.location_id
+      WHERE ${itemScope.sql}
+      ORDER BY subtree.path ASC, i.name ASC
+      `,
+      [id, ...locationScope.params]
+    );
+
+    return res.status(200).json({
+      location: {
+        id,
+        name: location.rows[0].name,
+        path: locationPath.rows[0]?.path ?? location.rows[0].name,
+      },
+      expected_count: checklist.rowCount ?? checklist.rows.length,
+      generated_at: new Date().toISOString(),
+      items: checklist.rows,
+    });
+  } catch (error) {
+    return sendInternalError(error, res);
+  }
+});
+
 locationsRouter.post("/locations/:id/move-impact", async (req, res) => {
   const id = req.params.id;
   if (!isUuid(id)) {

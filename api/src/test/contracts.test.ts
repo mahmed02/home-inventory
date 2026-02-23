@@ -413,6 +413,111 @@ test("GET /scan/location/:code?format=json enforces access scope", async () => {
   assert.deepEqual(outsiderScan.json, { error: "Scanned location not found" });
 });
 
+test("GET /locations/:id/verification/checklist returns expected subtree items", async () => {
+  const house = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(house.status, 201);
+  const houseId = (house.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: houseId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const shelf = await request("/locations", {
+    method: "POST",
+    body: { name: "Shelf A", code: "S1", type: "shelf", parent_id: garageId },
+  });
+  assert.equal(shelf.status, 201);
+  const shelfId = (shelf.json as { id: string }).id;
+
+  const attic = await request("/locations", {
+    method: "POST",
+    body: { name: "Attic", code: "A1", type: "room", parent_id: houseId },
+  });
+  assert.equal(attic.status, 201);
+  const atticId = (attic.json as { id: string }).id;
+
+  const garageItem = await request("/items", {
+    method: "POST",
+    body: { name: "Drill Driver", keywords: ["tool"], location_id: garageId },
+  });
+  assert.equal(garageItem.status, 201);
+
+  const shelfItem = await request("/items", {
+    method: "POST",
+    body: { name: "Socket Set", keywords: ["tool"], location_id: shelfId },
+  });
+  assert.equal(shelfItem.status, 201);
+
+  const atticItem = await request("/items", {
+    method: "POST",
+    body: { name: "Holiday Lights", keywords: ["lights"], location_id: atticId },
+  });
+  assert.equal(atticItem.status, 201);
+
+  const checklist = await request(`/locations/${garageId}/verification/checklist`);
+  assert.equal(checklist.status, 200);
+  const checklistJson = checklist.json as {
+    location: { id: string; name: string; path: string };
+    expected_count: number;
+    items: Array<{ name: string; location_path: string }>;
+  };
+
+  assert.equal(checklistJson.location.id, garageId);
+  assert.equal(checklistJson.location.name, "Garage");
+  assert.match(checklistJson.location.path, /^House > Garage$/);
+  assert.equal(checklistJson.expected_count, 2);
+  assert.equal(checklistJson.items.length, 2);
+  assert.deepEqual(
+    checklistJson.items.map((row) => row.name),
+    ["Drill Driver", "Socket Set"]
+  );
+  assert.deepEqual(
+    checklistJson.items.map((row) => row.location_path),
+    ["Garage", "Garage > Shelf A"]
+  );
+});
+
+test("GET /locations/:id/verification/checklist enforces owner scope", async () => {
+  const owner = await request("/auth/register", {
+    method: "POST",
+    body: { email: "verify-owner@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(owner.status, 201);
+  const ownerToken = (owner.json as { token: string }).token;
+
+  const outsider = await request("/auth/register", {
+    method: "POST",
+    body: { email: "verify-outsider@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(outsider.status, 201);
+  const outsiderToken = (outsider.json as { token: string }).token;
+
+  const location = await request("/locations", {
+    method: "POST",
+    token: ownerToken,
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(location.status, 201);
+  const locationId = (location.json as { id: string }).id;
+
+  const ownerChecklist = await request(`/locations/${locationId}/verification/checklist`, {
+    token: ownerToken,
+  });
+  assert.equal(ownerChecklist.status, 200);
+
+  const outsiderChecklist = await request(`/locations/${locationId}/verification/checklist`, {
+    token: outsiderToken,
+  });
+  assert.equal(outsiderChecklist.status, 404);
+  assert.deepEqual(outsiderChecklist.json, { error: "Location not found" });
+});
+
 test("POST /locations/:id/move-impact previews affected items and paths", async () => {
   const house = await request("/locations", {
     method: "POST",

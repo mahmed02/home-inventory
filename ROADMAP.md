@@ -145,7 +145,7 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 ### Phase 10 — Physical-Digital Sync
 - [x] QR generation for locations
 - [x] Scan-to-view experience
-- [ ] Verification mode for expected vs actual inventory
+- [x] Verification mode for expected vs actual inventory
 
 ### Phase 11 — Mobile App + Storage Modes
 - [ ] Define mobile stack (`React Native` or `Flutter`) and baseline app architecture
@@ -160,16 +160,16 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 ## 4) Next Tasks (Recommended Order)
 
 ### Queued Now
-1. `10-03` Verification mode (expected vs actual)
-2. `11-01` Mobile architecture ADR + bootstrap
-3. `11-02` Shared API client + mobile auth integration
+1. `11-01` Mobile architecture ADR + bootstrap
+2. `11-02` Shared API client + mobile auth integration
+3. `11-03` Local-only mode data layer
 
 ### Next Batch (immediately actionable)
-1. `10-03` Verification mode (expected vs actual)
-2. `11-01` Mobile architecture ADR + bootstrap
-3. `11-02` Shared API client + mobile auth integration
-4. `11-03` Local-only mode data layer
-5. `11-04` Cloud sync offline queue + reconciliation
+1. `11-01` Mobile architecture ADR + bootstrap
+2. `11-02` Shared API client + mobile auth integration
+3. `11-03` Local-only mode data layer
+4. `11-04` Cloud sync offline queue + reconciliation
+5. `11-05` Mode toggle + security baseline
 
 ### Follow-up Batch
 1. `11-01` Mobile architecture ADR + bootstrap

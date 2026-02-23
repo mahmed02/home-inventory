@@ -161,6 +161,18 @@
         <pre id="treeText" class="tree"></pre>
       </section>
 
+      <section id="verificationPanel" class="panel" hidden>
+        <div class="panel-head">
+          <h2>Verification Mode</h2>
+          <div class="actions-row">
+            <button id="refreshVerificationBtn" type="button">Refresh Checklist</button>
+            <button id="exportDiscrepanciesBtn" type="button">Export Missing CSV</button>
+          </div>
+        </div>
+        <p id="verificationSummary" class="hint">Select a location to verify expected vs actual items.</p>
+        <ul id="verificationList" class="management-list"></ul>
+      </section>
+
       <p id="status" class="status"></p>
     </main>
 
