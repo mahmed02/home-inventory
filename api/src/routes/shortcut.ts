@@ -1,16 +1,18 @@
 import { Router } from "express";
 import { markRawResponse } from "../middleware/http";
 import { pool } from "../db/pool";
-import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
+import { InventoryScope, inventoryScopeSql, resolveInventoryScope } from "../auth/inventoryScope";
 import { normalizeOptionalText } from "../utils";
 
 const shortcutRouter = Router();
 
 async function lookupTopItem(
   q: string,
-  ownerUserId: string | null
+  scope: InventoryScope
 ): Promise<{ item: string | null; location_path: string | null; notes: string }> {
   const needle = `%${q}%`;
+  const locationsScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+  const itemsScope = inventoryScopeSql(scope, "i.household_id", "i.owner_user_id", 2);
 
   const result = await pool.query<{
     item: string;
@@ -22,12 +24,12 @@ async function lookupTopItem(
     WITH RECURSIVE location_paths AS (
       SELECT id, parent_id, name, name::text AS path
       FROM locations
-      WHERE parent_id IS NULL AND ${ownerScopeSql("owner_user_id", 2)}
+      WHERE parent_id IS NULL AND ${locationsScope.sql}
       UNION ALL
       SELECT l.id, l.parent_id, l.name, lp.path || ' > ' || l.name
       FROM locations l
       JOIN location_paths lp ON l.parent_id = lp.id
-      WHERE ${ownerScopeSql("l.owner_user_id", 2)}
+      WHERE ${locationsScope.sql}
     )
     SELECT
       i.name AS item,
@@ -41,7 +43,7 @@ async function lookupTopItem(
     FROM items i
     JOIN location_paths lp ON lp.id = i.location_id
     WHERE
-      ${ownerScopeSql("i.owner_user_id", 2)} AND (
+      ${itemsScope.sql} AND (
         i.name ILIKE $1 OR
         COALESCE(i.description, '') ILIKE $1 OR
         array_to_string(i.keywords, ' ') ILIKE $1
@@ -49,7 +51,7 @@ async function lookupTopItem(
     ORDER BY rank ASC, i.name ASC
     LIMIT 1
     `,
-    [needle, ownerUserId]
+    [needle, ...locationsScope.params]
   );
 
   if (result.rowCount === 0) {
@@ -69,7 +71,6 @@ async function lookupTopItem(
 }
 
 shortcutRouter.get("/api/items/lookup", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   markRawResponse(res);
   const q = normalizeOptionalText(req.query.q);
   if (!q) {
@@ -77,7 +78,11 @@ shortcutRouter.get("/api/items/lookup", async (req, res) => {
   }
 
   try {
-    const payload = await lookupTopItem(q, ownerUserId);
+    const scopeResult = await resolveInventoryScope(req);
+    if (!scopeResult.ok) {
+      return res.status(scopeResult.status).json({ error: scopeResult.message });
+    }
+    const payload = await lookupTopItem(q, scopeResult.scope);
     return res.status(200).json(payload);
   } catch (error) {
     console.error(error);
@@ -86,7 +91,6 @@ shortcutRouter.get("/api/items/lookup", async (req, res) => {
 });
 
 shortcutRouter.get("/shortcut/find-item", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   markRawResponse(res);
   const q = normalizeOptionalText(req.query.q);
   if (!q) {
@@ -94,7 +98,11 @@ shortcutRouter.get("/shortcut/find-item", async (req, res) => {
   }
 
   try {
-    const payload = await lookupTopItem(q, ownerUserId);
+    const scopeResult = await resolveInventoryScope(req);
+    if (!scopeResult.ok) {
+      return res.status(scopeResult.status).json({ error: scopeResult.message });
+    }
+    const payload = await lookupTopItem(q, scopeResult.scope);
     return res.status(200).json(payload);
   } catch (error) {
     console.error(error);

@@ -152,7 +152,7 @@ Status: `done`
   - Shared inventory data access is enabled in `6.6-04`.
 
 ## 6.6-04) Household-Scoped Access Refactor
-Status: `todo`
+Status: `done`
 - Depends on: `6.6-02`
 - Scope:
   - Refactor inventory reads/writes from user scope to household scope.
@@ -161,7 +161,7 @@ Status: `todo`
   - Owner/editor/viewer behaviors match ADR matrix across endpoints.
 
 ## 6.6-05) Sharing Authorization Test Matrix
-Status: `blocked`
+Status: `done`
 - Depends on: `6.6-04`
 - Scope:
   - Add tests for same-household collaboration and cross-household denial.
@@ -170,7 +170,7 @@ Status: `blocked`
   - Tests prove collaboration works without data leakage.
 
 ## 6.6-06) Sharing UI (Invite + Members + Role Management)
-Status: `blocked`
+Status: `todo`
 - Depends on: `6.6-03`, `6.6-04`
 - Scope:
   - Add household settings UI for invites, member list, and role edits.
@@ -354,8 +354,8 @@ Status: `todo`
 
 ## Suggested Next Batch
 
-1. `6.6-04` Household-Scoped Access Refactor
-2. `6.6-05` Sharing Authorization Test Matrix
-3. `6.6-06` Sharing UI (Invite + Members + Role Management)
-4. `6-01` Move Impact API
-5. `6-02` Move Confirmation UX
+1. `6.6-06` Sharing UI (Invite + Members + Role Management)
+2. `6-01` Move Impact API
+3. `6-02` Move Confirmation UX
+4. `6-03` Bulk Impact Visibility + Tests
+5. `7-01` Embeddings Store + Provider Integration

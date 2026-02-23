@@ -1,4 +1,4 @@
-import { Response, Router } from "express";
+import { Request, Response, Router } from "express";
 import {
   getDbErrorCode,
   sendConflict,
@@ -8,14 +8,35 @@ import {
 } from "../middleware/http";
 import { asOptionalText, asOptionalUuid, asRequiredText } from "../middleware/validation";
 import { pool } from "../db/pool";
-import { resolvePrimaryHouseholdIdForUser } from "../auth/households";
+import {
+  InventoryScope,
+  canWriteInventory,
+  inventoryScopeSql,
+  resolveInventoryScope,
+} from "../auth/inventoryScope";
 import { LocationRow } from "../types";
-import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
 import { isUuid, normalizeOptionalText } from "../utils";
 
 const locationsRouter = Router();
 
 type TreeNode = LocationRow & { children: TreeNode[] };
+
+async function resolveScope(req: Request, res: Response) {
+  const scopeResult = await resolveInventoryScope(req);
+  if (!scopeResult.ok) {
+    res.status(scopeResult.status).json({ error: scopeResult.message });
+    return null;
+  }
+  return scopeResult.scope;
+}
+
+function ensureWriteAccess(scope: InventoryScope, res: Response): boolean {
+  if (!canWriteInventory(scope)) {
+    res.status(403).json({ error: "Household role does not allow write access" });
+    return false;
+  }
+  return true;
+}
 
 function handleDbError(error: unknown, res: Response) {
   const code = getDbErrorCode(error);
@@ -28,7 +49,6 @@ function handleDbError(error: unknown, res: Response) {
 }
 
 locationsRouter.post("/locations", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const name = asRequiredText(req.body.name);
   const code = asOptionalText(req.body.code);
   const type = asOptionalText(req.body.type);
@@ -45,16 +65,23 @@ locationsRouter.post("/locations", async (req, res) => {
   }
 
   try {
-    const householdId = await resolvePrimaryHouseholdIdForUser(ownerUserId);
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+    if (!ensureWriteAccess(scope, res)) {
+      return;
+    }
 
     if (parentId) {
+      const parentScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
       const parent = await pool.query(
         `
         SELECT id
         FROM locations
-        WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+        WHERE id = $1 AND ${parentScope.sql}
         `,
-        [parentId, ownerUserId]
+        [parentId, ...parentScope.params]
       );
       if (parent.rowCount === 0) {
         return sendValidationError(res, "parent_id does not exist");
@@ -76,7 +103,7 @@ locationsRouter.post("/locations", async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
       `,
-      [name, code, type, parentId, description, imageUrl, ownerUserId, householdId]
+      [name, code, type, parentId, description, imageUrl, scope.ownerUserId, scope.householdId]
     );
 
     return res.status(201).json(result.rows[0]);
@@ -86,7 +113,6 @@ locationsRouter.post("/locations", async (req, res) => {
 });
 
 locationsRouter.get("/locations/tree", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const rootId = normalizeOptionalText(req.query.root_id);
 
   if (rootId && !isUuid(rootId)) {
@@ -99,40 +125,48 @@ locationsRouter.get("/locations/tree", async (req, res) => {
     : 100;
 
   try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
     let rows: LocationRow[] = [];
 
     if (rootId) {
+      const rootScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 3);
+      const recursiveScope = inventoryScopeSql(scope, "l.household_id", "l.owner_user_id", 3);
       const result = await pool.query<LocationRow>(
         `
         WITH RECURSIVE tree AS (
           SELECT id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id, 1 AS depth
           FROM locations
-          WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 3)}
+          WHERE id = $1 AND ${rootScope.sql}
           UNION ALL
           SELECT l.id, l.name, l.code, l.type, l.parent_id, l.description, l.image_url, l.created_at, l.updated_at, l.owner_user_id, tree.depth + 1
           FROM locations l
           JOIN tree ON l.parent_id = tree.id
-          WHERE tree.depth < $2 AND ${ownerScopeSql("l.owner_user_id", 3)}
+          WHERE tree.depth < $2 AND ${recursiveScope.sql}
         )
         SELECT id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id
         FROM tree
         ORDER BY name ASC
         `,
-        [rootId, maxDepth, ownerUserId]
+        [rootId, maxDepth, ...rootScope.params]
       );
       rows = result.rows;
       if (rows.length === 0) {
         return sendNotFound(res, "Root location not found");
       }
     } else {
+      const allScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 1);
       const result = await pool.query<LocationRow>(
         `
         SELECT id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id
         FROM locations
-        WHERE ${ownerScopeSql("owner_user_id", 1)}
+        WHERE ${allScope.sql}
         ORDER BY name ASC
         `,
-        [ownerUserId]
+        [...allScope.params]
       );
       rows = result.rows;
     }
@@ -169,32 +203,38 @@ locationsRouter.get("/locations/tree", async (req, res) => {
 });
 
 locationsRouter.get("/locations/:id/path", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid location id");
   }
 
   try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
+    const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const recursiveScope = inventoryScopeSql(scope, "l.household_id", "l.owner_user_id", 2);
     const result = await pool.query<{ id: string; name: string; path: string }>(
       `
       WITH RECURSIVE ancestors AS (
         SELECT id, parent_id, name, 1 AS depth
         FROM locations
-        WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+        WHERE id = $1 AND ${locationScope.sql}
         UNION ALL
         SELECT l.id, l.parent_id, l.name, ancestors.depth + 1
         FROM locations l
         JOIN ancestors ON ancestors.parent_id = l.id
-        WHERE ${ownerScopeSql("l.owner_user_id", 2)}
+        WHERE ${recursiveScope.sql}
       )
       SELECT
         $1::uuid AS id,
-        (SELECT name FROM locations WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}) AS name,
+        (SELECT name FROM locations WHERE id = $1 AND ${locationScope.sql}) AS name,
         string_agg(name, ' > ' ORDER BY depth DESC) AS path
       FROM ancestors
       `,
-      [id, ownerUserId]
+      [id, ...locationScope.params]
     );
 
     if (!result.rows[0]?.name) {
@@ -208,7 +248,6 @@ locationsRouter.get("/locations/:id/path", async (req, res) => {
 });
 
 locationsRouter.patch("/locations/:id", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid location id");
@@ -253,37 +292,53 @@ locationsRouter.patch("/locations/:id", async (req, res) => {
     }
 
     try {
+      const scope = await resolveScope(req, res);
+      if (!scope) {
+        return;
+      }
+      if (!ensureWriteAccess(scope, res)) {
+        return;
+      }
+
       if (parentId) {
+        const parentScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
         const parentCheck = await pool.query(
           `
           SELECT id
           FROM locations
-          WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+          WHERE id = $1 AND ${parentScope.sql}
           `,
-          [parentId, ownerUserId]
+          [parentId, ...parentScope.params]
         );
         if (parentCheck.rowCount === 0) {
           return sendValidationError(res, "parent_id does not exist");
         }
 
+        const cycleRootScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 3);
+        const cycleRecursiveScope = inventoryScopeSql(
+          scope,
+          "l.household_id",
+          "l.owner_user_id",
+          3
+        );
         const cycleCheck = await pool.query(
           `
           WITH RECURSIVE subtree AS (
             SELECT id
             FROM locations
-            WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 3)}
+            WHERE id = $1 AND ${cycleRootScope.sql}
             UNION ALL
             SELECT l.id
             FROM locations l
             JOIN subtree s ON l.parent_id = s.id
-            WHERE ${ownerScopeSql("l.owner_user_id", 3)}
+            WHERE ${cycleRecursiveScope.sql}
           )
           SELECT 1
           FROM subtree
           WHERE id = $2
           LIMIT 1
           `,
-          [id, parentId, ownerUserId]
+          [id, parentId, ...cycleRootScope.params]
         );
 
         if ((cycleCheck.rowCount ?? 0) > 0) {
@@ -302,18 +357,32 @@ locationsRouter.patch("/locations/:id", async (req, res) => {
   }
 
   try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+    if (!ensureWriteAccess(scope, res)) {
+      return;
+    }
+
     const setClause = updates.map((entry, index) => `${entry.key} = $${index + 1}`).join(", ");
     const values = updates.map((entry) => entry.value);
+    const locationScope = inventoryScopeSql(
+      scope,
+      "household_id",
+      "owner_user_id",
+      updates.length + 2
+    );
 
     const result = await pool.query<LocationRow>(
       `
       UPDATE locations
       SET ${setClause}
       WHERE id = $${updates.length + 1}
-        AND ${ownerScopeSql("owner_user_id", updates.length + 2)}
+        AND ${locationScope.sql}
       RETURNING *
       `,
-      [...values, id, ownerUserId]
+      [...values, id, ...locationScope.params]
     );
 
     if (result.rowCount === 0) {
@@ -327,26 +396,35 @@ locationsRouter.patch("/locations/:id", async (req, res) => {
 });
 
 locationsRouter.delete("/locations/:id", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid location id");
   }
 
   try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+    if (!ensureWriteAccess(scope, res)) {
+      return;
+    }
+
+    const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
     const [location, children, items] = await Promise.all([
-      pool.query(
-        `SELECT id FROM locations WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}`,
-        [id, ownerUserId]
-      ),
-      pool.query(
-        `SELECT 1 FROM locations WHERE parent_id = $1 AND ${ownerScopeSql("owner_user_id", 2)} LIMIT 1`,
-        [id, ownerUserId]
-      ),
-      pool.query(
-        `SELECT 1 FROM items WHERE location_id = $1 AND ${ownerScopeSql("owner_user_id", 2)} LIMIT 1`,
-        [id, ownerUserId]
-      ),
+      pool.query(`SELECT id FROM locations WHERE id = $1 AND ${locationScope.sql}`, [
+        id,
+        ...locationScope.params,
+      ]),
+      pool.query(`SELECT 1 FROM locations WHERE parent_id = $1 AND ${locationScope.sql} LIMIT 1`, [
+        id,
+        ...locationScope.params,
+      ]),
+      pool.query(`SELECT 1 FROM items WHERE location_id = $1 AND ${itemScope.sql} LIMIT 1`, [
+        id,
+        ...itemScope.params,
+      ]),
     ]);
 
     if (location.rowCount === 0) {
@@ -357,10 +435,10 @@ locationsRouter.delete("/locations/:id", async (req, res) => {
       return sendConflict(res, "Cannot delete location with children or items");
     }
 
-    await pool.query(
-      `DELETE FROM locations WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}`,
-      [id, ownerUserId]
-    );
+    await pool.query(`DELETE FROM locations WHERE id = $1 AND ${locationScope.sql}`, [
+      id,
+      ...locationScope.params,
+    ]);
     return res.status(204).send();
   } catch (error) {
     return sendInternalError(error, res);

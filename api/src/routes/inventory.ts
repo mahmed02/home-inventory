@@ -3,7 +3,7 @@ import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
 import { ItemRow, LocationRow } from "../types";
-import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
+import { inventoryScopeSql, resolveInventoryScope } from "../auth/inventoryScope";
 
 type InventoryNode = LocationRow & {
   children: InventoryNode[];
@@ -23,18 +23,23 @@ type InventoryNode = LocationRow & {
 const inventoryRouter = Router();
 
 inventoryRouter.get("/inventory/tree", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
-
   try {
+    const scopeResult = await resolveInventoryScope(req);
+    if (!scopeResult.ok) {
+      return res.status(scopeResult.status).json({ error: scopeResult.message });
+    }
+
+    const locationsScope = inventoryScopeSql(scopeResult.scope, "household_id", "owner_user_id", 1);
+    const itemsScope = inventoryScopeSql(scopeResult.scope, "household_id", "owner_user_id", 1);
+
     const [locationResult, itemResult] = await Promise.all([
       pool.query<LocationRow>(
-        `SELECT * FROM locations WHERE ${ownerScopeSql("owner_user_id", 1)} ORDER BY name ASC`,
-        [ownerUserId]
+        `SELECT * FROM locations WHERE ${locationsScope.sql} ORDER BY name ASC`,
+        [...locationsScope.params]
       ),
-      pool.query<ItemRow>(
-        `SELECT * FROM items WHERE ${ownerScopeSql("owner_user_id", 1)} ORDER BY name ASC`,
-        [ownerUserId]
-      ),
+      pool.query<ItemRow>(`SELECT * FROM items WHERE ${itemsScope.sql} ORDER BY name ASC`, [
+        ...itemsScope.params,
+      ]),
     ]);
 
     const nodesById = new Map<string, InventoryNode>();

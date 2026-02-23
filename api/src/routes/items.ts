@@ -1,4 +1,4 @@
-import { Response, Router } from "express";
+import { Request, Response, Router } from "express";
 import {
   getDbErrorCode,
   sendInternalError,
@@ -15,11 +15,32 @@ import { pool } from "../db/pool";
 import { env } from "../config/env";
 import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
 import { ItemRow } from "../types";
-import { resolvePrimaryHouseholdIdForUser } from "../auth/households";
-import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
+import {
+  InventoryScope,
+  canWriteInventory,
+  inventoryScopeSql,
+  resolveInventoryScope,
+} from "../auth/inventoryScope";
 import { isUuid, normalizeOptionalText, readLimitOffset } from "../utils";
 
 const itemsRouter = Router();
+
+async function resolveScope(req: Request, res: Response) {
+  const scopeResult = await resolveInventoryScope(req);
+  if (!scopeResult.ok) {
+    res.status(scopeResult.status).json({ error: scopeResult.message });
+    return null;
+  }
+  return scopeResult.scope;
+}
+
+function ensureWriteAccess(scope: InventoryScope, res: Response): boolean {
+  if (!canWriteInventory(scope)) {
+    res.status(403).json({ error: "Household role does not allow write access" });
+    return false;
+  }
+  return true;
+}
 
 function dbError(error: unknown, res: Response) {
   const code = getDbErrorCode(error);
@@ -32,7 +53,6 @@ function dbError(error: unknown, res: Response) {
 }
 
 itemsRouter.post("/items", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const name = asRequiredText(req.body.name);
   const description = asOptionalText(req.body.description);
   const imageUrl = asOptionalText(req.body.image_url);
@@ -44,15 +64,23 @@ itemsRouter.post("/items", async (req, res) => {
   }
 
   try {
-    const householdId = await resolvePrimaryHouseholdIdForUser(ownerUserId);
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+    if (!ensureWriteAccess(scope, res)) {
+      return;
+    }
+
+    const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
 
     const location = await pool.query(
       `
       SELECT id
       FROM locations
-      WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+      WHERE id = $1 AND ${locationScope.sql}
       `,
-      [locationId, ownerUserId]
+      [locationId, ...locationScope.params]
     );
     if (location.rowCount === 0) {
       return res.status(404).json({ error: "location_id not found" });
@@ -72,7 +100,7 @@ itemsRouter.post("/items", async (req, res) => {
       VALUES ($1, $2, $3::text[], $4, $5, $6, $7)
       RETURNING *
       `,
-      [name, description, keywords, locationId, imageUrl, ownerUserId, householdId]
+      [name, description, keywords, locationId, imageUrl, scope.ownerUserId, scope.householdId]
     );
 
     return res.status(201).json(result.rows[0]);
@@ -82,20 +110,25 @@ itemsRouter.post("/items", async (req, res) => {
 });
 
 itemsRouter.get("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid item id");
   }
 
   try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+    const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+
     const result = await pool.query<ItemRow>(
       `
       SELECT *
       FROM items
-      WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+      WHERE id = $1 AND ${itemScope.sql}
       `,
-      [id, ownerUserId]
+      [id, ...itemScope.params]
     );
     if (result.rowCount === 0) {
       return sendNotFound(res, "Item not found");
@@ -108,7 +141,6 @@ itemsRouter.get("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
 });
 
 itemsRouter.get("/items", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const locationId = normalizeOptionalText(req.query.location_id);
   if (locationId && !isUuid(locationId)) {
     return sendValidationError(res, "location_id must be UUID");
@@ -117,8 +149,14 @@ itemsRouter.get("/items", async (req, res) => {
   const { limit, offset } = readLimitOffset(req);
 
   try {
-    const values: Array<string | number | null> = [ownerUserId];
-    const whereParts = [ownerScopeSql("owner_user_id", 1)];
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
+    const baseScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 1);
+    const values: Array<string | number | null> = [...baseScope.params];
+    const whereParts = [baseScope.sql];
 
     if (locationId) {
       values.push(locationId);
@@ -149,7 +187,6 @@ itemsRouter.get("/items", async (req, res) => {
 });
 
 itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid item id");
@@ -199,14 +236,23 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
   }
 
   try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+    if (!ensureWriteAccess(scope, res)) {
+      return;
+    }
+
     if (pendingLocationId) {
+      const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
       const location = await pool.query(
         `
         SELECT id
         FROM locations
-        WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+        WHERE id = $1 AND ${locationScope.sql}
         `,
-        [pendingLocationId, ownerUserId]
+        [pendingLocationId, ...locationScope.params]
       );
       if (location.rowCount === 0) {
         return res.status(404).json({ error: "location_id not found" });
@@ -216,16 +262,17 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     const setClause = updates.map((entry, index) => `${entry.key} = $${index + 1}`).join(", ");
 
     const values = updates.map((entry) => entry.value);
+    const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", updates.length + 2);
 
     const result = await pool.query<ItemRow>(
       `
       UPDATE items
       SET ${setClause}
       WHERE id = $${updates.length + 1}
-        AND ${ownerScopeSql("owner_user_id", updates.length + 2)}
+        AND ${itemScope.sql}
       RETURNING *
       `,
-      [...values, id, ownerUserId]
+      [...values, id, ...itemScope.params]
     );
 
     if (result.rowCount === 0) {
@@ -239,17 +286,25 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
 });
 
 itemsRouter.delete("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid item id");
   }
 
   try {
-    const result = await pool.query(
-      `DELETE FROM items WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}`,
-      [id, ownerUserId]
-    );
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+    if (!ensureWriteAccess(scope, res)) {
+      return;
+    }
+
+    const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const result = await pool.query(`DELETE FROM items WHERE id = $1 AND ${itemScope.sql}`, [
+      id,
+      ...itemScope.params,
+    ]);
     if (result.rowCount === 0) {
       return sendNotFound(res, "Item not found");
     }
@@ -261,7 +316,6 @@ itemsRouter.delete("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
 });
 
 itemsRouter.get("/items/search", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const q = normalizeOptionalText(req.query.q);
   if (!q) {
     return sendValidationError(res, "q is required");
@@ -271,6 +325,14 @@ itemsRouter.get("/items/search", async (req, res) => {
   const needle = `%${q}%`;
 
   try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
+    const rootScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const recursiveScope = inventoryScopeSql(scope, "l.household_id", "l.owner_user_id", 2);
+    const itemScope = inventoryScopeSql(scope, "i.household_id", "i.owner_user_id", 2);
     const result = await pool.query<{
       id: string;
       name: string;
@@ -282,19 +344,19 @@ itemsRouter.get("/items/search", async (req, res) => {
       WITH RECURSIVE location_paths AS (
         SELECT id, parent_id, name, name::text AS path
         FROM locations
-        WHERE parent_id IS NULL AND ${ownerScopeSql("owner_user_id", 2)}
+        WHERE parent_id IS NULL AND ${rootScope.sql}
         UNION ALL
         SELECT l.id, l.parent_id, l.name, lp.path || ' > ' || l.name
         FROM locations l
         JOIN location_paths lp ON l.parent_id = lp.id
-        WHERE ${ownerScopeSql("l.owner_user_id", 2)}
+        WHERE ${recursiveScope.sql}
       ),
       filtered AS (
         SELECT i.id, i.name, i.image_url, lp.path AS location_path
         FROM items i
         JOIN location_paths lp ON lp.id = i.location_id
         WHERE
-          ${ownerScopeSql("i.owner_user_id", 2)} AND (
+          ${itemScope.sql} AND (
             i.name ILIKE $1 OR
             COALESCE(i.description, '') ILIKE $1 OR
             array_to_string(i.keywords, ' ') ILIKE $1
@@ -305,7 +367,7 @@ itemsRouter.get("/items/search", async (req, res) => {
       ORDER BY name ASC
       LIMIT $3 OFFSET $4
       `,
-      [needle, ownerUserId, limit, offset]
+      [needle, ...rootScope.params, limit, offset]
     );
 
     const total = Number(result.rows[0]?.total_count ?? "0");

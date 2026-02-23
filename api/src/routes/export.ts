@@ -1,9 +1,13 @@
-import { Router } from "express";
+import { Request, Response, Router } from "express";
 import { randomUUID } from "node:crypto";
 import { PoolClient } from "pg";
 import { pool } from "../db/pool";
-import { resolvePrimaryHouseholdIdForUser } from "../auth/households";
-import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
+import {
+  InventoryScope,
+  canWriteInventory,
+  inventoryScopeSql,
+  resolveInventoryScope,
+} from "../auth/inventoryScope";
 import { createInMemoryRateLimit } from "../middleware/rateLimit";
 import { sendConflict, sendInternalError, sendValidationError } from "../middleware/http";
 import { ItemRow, LocationRow } from "../types";
@@ -22,6 +26,23 @@ exportRouter.use(
     windowMs: 60_000,
   })
 );
+
+async function resolveScope(req: Request, res: Response): Promise<InventoryScope | null> {
+  const scopeResult = await resolveInventoryScope(req);
+  if (!scopeResult.ok) {
+    res.status(scopeResult.status).json({ error: scopeResult.message });
+    return null;
+  }
+  return scopeResult.scope;
+}
+
+function ensureWriteAccess(scope: InventoryScope, res: Response): boolean {
+  if (!canWriteInventory(scope)) {
+    res.status(403).json({ error: "Household role does not allow write access" });
+    return false;
+  }
+  return true;
+}
 
 function parseBooleanQuery(value: unknown): boolean {
   return typeof value === "string" && value.toLowerCase() === "true";
@@ -93,13 +114,12 @@ async function insertImportData(
   client: PoolClient,
   locations: LocationRow[],
   items: ItemRow[],
-  ownerUserId: string | null,
-  householdId: string | null
+  scope: InventoryScope
 ): Promise<void> {
-  await client.query(`DELETE FROM items WHERE ${ownerScopeSql("owner_user_id", 1)}`, [ownerUserId]);
-  await client.query(`DELETE FROM locations WHERE ${ownerScopeSql("owner_user_id", 1)}`, [
-    ownerUserId,
-  ]);
+  const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 1);
+  const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 1);
+  await client.query(`DELETE FROM items WHERE ${itemScope.sql}`, [...itemScope.params]);
+  await client.query(`DELETE FROM locations WHERE ${locationScope.sql}`, [...locationScope.params]);
 
   for (const row of locations) {
     await client.query(
@@ -119,8 +139,8 @@ async function insertImportData(
         row.image_url,
         row.created_at,
         row.updated_at,
-        ownerUserId,
-        householdId,
+        scope.ownerUserId,
+        scope.householdId,
       ]
     );
   }
@@ -142,8 +162,8 @@ async function insertImportData(
         row.image_url,
         row.created_at,
         row.updated_at,
-        ownerUserId,
-        householdId,
+        scope.ownerUserId,
+        scope.householdId,
       ]
     );
   }
@@ -153,8 +173,7 @@ async function mergeImportData(
   client: PoolClient,
   locations: LocationRow[],
   items: ItemRow[],
-  ownerUserId: string | null,
-  householdId: string | null
+  scope: InventoryScope
 ): Promise<void> {
   for (const row of locations) {
     await client.query(
@@ -174,8 +193,8 @@ async function mergeImportData(
         row.image_url,
         row.created_at,
         row.updated_at,
-        ownerUserId,
-        householdId,
+        scope.ownerUserId,
+        scope.householdId,
       ]
     );
   }
@@ -197,8 +216,8 @@ async function mergeImportData(
         row.image_url,
         row.created_at,
         row.updated_at,
-        ownerUserId,
-        householdId,
+        scope.ownerUserId,
+        scope.householdId,
       ]
     );
   }
@@ -230,22 +249,17 @@ async function remapImportPayload(
   client: PoolClient,
   locations: LocationRow[],
   items: ItemRow[],
-  ownerUserId: string | null,
-  householdId: string | null
+  scope: InventoryScope
 ): Promise<{ locations: LocationRow[]; items: ItemRow[] }> {
-  const existingCodesResult = householdId
-    ? await client.query<{ code: string }>(
-        `
-        SELECT code
-        FROM locations
-        WHERE code IS NOT NULL AND household_id = $1
-        `,
-        [householdId]
-      )
-    : await client.query<{ code: string }>(
-        `SELECT code FROM locations WHERE code IS NOT NULL AND ${ownerScopeSql("owner_user_id", 1)}`,
-        [ownerUserId]
-      );
+  const scopeClause = inventoryScopeSql(scope, "household_id", "owner_user_id", 1);
+  const existingCodesResult = await client.query<{ code: string }>(
+    `
+    SELECT code
+    FROM locations
+    WHERE code IS NOT NULL AND ${scopeClause.sql}
+    `,
+    [...scopeClause.params]
+  );
   const seenCodes = new Set(existingCodesResult.rows.map((row) => row.code));
 
   const locationIdMap = new Map<string, string>();
@@ -275,18 +289,22 @@ async function remapImportPayload(
 }
 
 exportRouter.get("/export/inventory", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
-
   try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
+    const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 1);
+    const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 1);
     const [locationsResult, itemsResult] = await Promise.all([
       pool.query<LocationRow>(
-        `SELECT * FROM locations WHERE ${ownerScopeSql("owner_user_id", 1)} ORDER BY created_at ASC`,
-        [ownerUserId]
+        `SELECT * FROM locations WHERE ${locationScope.sql} ORDER BY created_at ASC`,
+        [...locationScope.params]
       ),
-      pool.query<ItemRow>(
-        `SELECT * FROM items WHERE ${ownerScopeSql("owner_user_id", 1)} ORDER BY created_at ASC`,
-        [ownerUserId]
-      ),
+      pool.query<ItemRow>(`SELECT * FROM items WHERE ${itemScope.sql} ORDER BY created_at ASC`, [
+        ...itemScope.params,
+      ]),
     ]);
 
     return res.status(200).json({
@@ -305,7 +323,6 @@ exportRouter.get("/export/inventory", async (req, res) => {
 });
 
 exportRouter.post("/import/inventory", async (req, res) => {
-  const ownerUserId = requestOwnerUserId(req);
   const validateOnly = parseBooleanQuery(req.query.validate_only);
   const remapIds = parseBooleanQuery(req.query.remap_ids);
   const body = req.body as ImportPayload;
@@ -314,6 +331,14 @@ exportRouter.post("/import/inventory", async (req, res) => {
 
   if (!locations || !items) {
     return sendValidationError(res, "locations and items arrays are required");
+  }
+
+  const scope = await resolveScope(req, res);
+  if (!scope) {
+    return;
+  }
+  if (!validateOnly && !ensureWriteAccess(scope, res)) {
+    return;
   }
 
   for (const row of locations) {
@@ -390,18 +415,11 @@ exportRouter.post("/import/inventory", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const householdId = await resolvePrimaryHouseholdIdForUser(ownerUserId, client);
     if (remapIds) {
-      const remapped = await remapImportPayload(
-        client,
-        sortedLocations,
-        items,
-        ownerUserId,
-        householdId
-      );
-      await mergeImportData(client, remapped.locations, remapped.items, ownerUserId, householdId);
+      const remapped = await remapImportPayload(client, sortedLocations, items, scope);
+      await mergeImportData(client, remapped.locations, remapped.items, scope);
     } else {
-      await insertImportData(client, sortedLocations, items, ownerUserId, householdId);
+      await insertImportData(client, sortedLocations, items, scope);
     }
     await client.query("COMMIT");
 

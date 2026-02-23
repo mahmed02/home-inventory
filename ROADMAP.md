@@ -134,9 +134,10 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 ### Phase 6.6 — Shared Household Access (Queued After 6.5 Completion)
 - [x] Add `households` and `household_members` with roles (`owner`, `editor`, `viewer`)
 - [x] Add invite + accept flow for owner-granted household membership
-- [ ] Refactor inventory ownership from user-only scope to household scope
-- [ ] Enforce role-based permissions on create/update/delete endpoints
-- [ ] Add cross-household authorization tests and sharing UX
+- [x] Refactor inventory ownership from user-only scope to household scope
+- [x] Enforce role-based permissions on create/update/delete endpoints
+- [x] Add cross-household authorization tests
+- [ ] Add sharing UX
 
 ### Phase 7 — Semantic Search
 - [ ] Add embeddings column/store

@@ -1043,3 +1043,251 @@ test("Household invitation revoke invalidates pending token", async () => {
   assert.equal(acceptRevoked.status, 400);
   assert.deepEqual(acceptRevoked.json, { error: "Invalid or expired invitation token" });
 });
+
+test("Household members can collaborate within shared household scope", async () => {
+  const owner = await request("/auth/register", {
+    method: "POST",
+    body: { email: "collab-owner@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(owner.status, 201);
+  const ownerToken = (owner.json as { token: string }).token;
+
+  const editor = await request("/auth/register", {
+    method: "POST",
+    body: { email: "collab-editor@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(editor.status, 201);
+  const editorToken = (editor.json as { token: string }).token;
+
+  const ownerHouseholds = await request("/households", { token: ownerToken });
+  assert.equal(ownerHouseholds.status, 200);
+  const sharedHouseholdId = (ownerHouseholds.json as { households: Array<{ id: string }> })
+    .households[0].id;
+  const sharedHeader = { "x-household-id": sharedHouseholdId };
+
+  const invite = await request(`/households/${sharedHouseholdId}/invitations`, {
+    method: "POST",
+    token: ownerToken,
+    body: { email: "collab-editor@example.com", role: "editor" },
+  });
+  assert.equal(invite.status, 201);
+  const invitationToken = (invite.json as { invitation_token: string }).invitation_token;
+
+  const accept = await request("/households/invitations/accept", {
+    method: "POST",
+    token: editorToken,
+    body: { token: invitationToken },
+  });
+  assert.equal(accept.status, 200);
+
+  const root = await request("/locations", {
+    method: "POST",
+    token: ownerToken,
+    headers: sharedHeader,
+    body: { name: "Shared House", code: "SH1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const createdItem = await request("/items", {
+    method: "POST",
+    token: ownerToken,
+    headers: sharedHeader,
+    body: {
+      name: "Shared Ladder",
+      keywords: ["shared", "ladder"],
+      location_id: rootId,
+    },
+  });
+  assert.equal(createdItem.status, 201);
+  const itemId = (createdItem.json as { id: string }).id;
+
+  const editorCannotSeeWithoutScope = await request(`/items/${itemId}`, { token: editorToken });
+  assert.equal(editorCannotSeeWithoutScope.status, 404);
+
+  const editorReadsShared = await request(`/items/${itemId}`, {
+    token: editorToken,
+    headers: sharedHeader,
+  });
+  assert.equal(editorReadsShared.status, 200);
+
+  const editorUpdatesShared = await request(`/items/${itemId}`, {
+    method: "PATCH",
+    token: editorToken,
+    headers: sharedHeader,
+    body: { name: "Shared Ladder v2" },
+  });
+  assert.equal(editorUpdatesShared.status, 200);
+  assert.equal((editorUpdatesShared.json as { name: string }).name, "Shared Ladder v2");
+
+  const editorCreatesShared = await request("/items", {
+    method: "POST",
+    token: editorToken,
+    headers: sharedHeader,
+    body: {
+      name: "Shared Drill",
+      keywords: ["shared", "drill"],
+      location_id: rootId,
+    },
+  });
+  assert.equal(editorCreatesShared.status, 201);
+});
+
+test("Viewer role remains read-only in shared household scope", async () => {
+  const owner = await request("/auth/register", {
+    method: "POST",
+    body: { email: "viewer-owner@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(owner.status, 201);
+  const ownerToken = (owner.json as { token: string }).token;
+
+  const viewer = await request("/auth/register", {
+    method: "POST",
+    body: { email: "viewer-user@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(viewer.status, 201);
+  const viewerToken = (viewer.json as { token: string }).token;
+
+  const ownerHouseholds = await request("/households", { token: ownerToken });
+  assert.equal(ownerHouseholds.status, 200);
+  const sharedHouseholdId = (ownerHouseholds.json as { households: Array<{ id: string }> })
+    .households[0].id;
+  const sharedHeader = { "x-household-id": sharedHouseholdId };
+
+  const invite = await request(`/households/${sharedHouseholdId}/invitations`, {
+    method: "POST",
+    token: ownerToken,
+    body: { email: "viewer-user@example.com", role: "viewer" },
+  });
+  assert.equal(invite.status, 201);
+  const invitationToken = (invite.json as { invitation_token: string }).invitation_token;
+
+  const accept = await request("/households/invitations/accept", {
+    method: "POST",
+    token: viewerToken,
+    body: { token: invitationToken },
+  });
+  assert.equal(accept.status, 200);
+
+  const root = await request("/locations", {
+    method: "POST",
+    token: ownerToken,
+    headers: sharedHeader,
+    body: { name: "Viewer House", code: "VH1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const createdItem = await request("/items", {
+    method: "POST",
+    token: ownerToken,
+    headers: sharedHeader,
+    body: {
+      name: "Viewer Shared Item",
+      keywords: ["shared"],
+      location_id: rootId,
+    },
+  });
+  assert.equal(createdItem.status, 201);
+  const itemId = (createdItem.json as { id: string }).id;
+
+  const viewerTree = await request("/inventory/tree", {
+    token: viewerToken,
+    headers: sharedHeader,
+  });
+  assert.equal(viewerTree.status, 200);
+  const viewerTreeJson = viewerTree.json as { total_items: number; total_locations: number };
+  assert.equal(viewerTreeJson.total_locations, 1);
+  assert.equal(viewerTreeJson.total_items, 1);
+
+  const viewerCannotCreate = await request("/items", {
+    method: "POST",
+    token: viewerToken,
+    headers: sharedHeader,
+    body: {
+      name: "Blocked Create",
+      keywords: ["blocked"],
+      location_id: rootId,
+    },
+  });
+  assert.equal(viewerCannotCreate.status, 403);
+
+  const viewerCannotPatch = await request(`/items/${itemId}`, {
+    method: "PATCH",
+    token: viewerToken,
+    headers: sharedHeader,
+    body: { name: "Blocked Patch" },
+  });
+  assert.equal(viewerCannotPatch.status, 403);
+
+  const viewerCannotDelete = await request(`/items/${itemId}`, {
+    method: "DELETE",
+    token: viewerToken,
+    headers: sharedHeader,
+  });
+  assert.equal(viewerCannotDelete.status, 403);
+});
+
+test("Cross-household access is denied when selecting another household id", async () => {
+  const owner = await request("/auth/register", {
+    method: "POST",
+    body: { email: "cross-owner@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(owner.status, 201);
+  const ownerToken = (owner.json as { token: string }).token;
+
+  const outsider = await request("/auth/register", {
+    method: "POST",
+    body: { email: "cross-outsider@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(outsider.status, 201);
+  const outsiderToken = (outsider.json as { token: string }).token;
+
+  const ownerHouseholds = await request("/households", { token: ownerToken });
+  assert.equal(ownerHouseholds.status, 200);
+  const ownerHouseholdId = (ownerHouseholds.json as { households: Array<{ id: string }> })
+    .households[0].id;
+  const ownerHeader = { "x-household-id": ownerHouseholdId };
+
+  const root = await request("/locations", {
+    method: "POST",
+    token: ownerToken,
+    headers: ownerHeader,
+    body: { name: "Cross House", code: "CH1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const createdItem = await request("/items", {
+    method: "POST",
+    token: ownerToken,
+    headers: ownerHeader,
+    body: {
+      name: "Cross Item",
+      keywords: ["private"],
+      location_id: rootId,
+    },
+  });
+  assert.equal(createdItem.status, 201);
+  const itemId = (createdItem.json as { id: string }).id;
+
+  const outsiderCannotSelectHousehold = await request(`/items/${itemId}`, {
+    token: outsiderToken,
+    headers: { "x-household-id": ownerHouseholdId },
+  });
+  assert.equal(outsiderCannotSelectHousehold.status, 404);
+  assert.deepEqual(outsiderCannotSelectHousehold.json, { error: "Household not found" });
+
+  const outsiderCannotWriteHousehold = await request("/items", {
+    method: "POST",
+    token: outsiderToken,
+    headers: { "x-household-id": ownerHouseholdId },
+    body: {
+      name: "Cross Write",
+      keywords: ["blocked"],
+      location_id: rootId,
+    },
+  });
+  assert.equal(outsiderCannotWriteHousehold.status, 404);
+  assert.deepEqual(outsiderCannotWriteHousehold.json, { error: "Household not found" });
+});
