@@ -9,6 +9,7 @@ const householdsRouter = Router();
 const HOUSEHOLD_ROLES = new Set(["owner", "editor", "viewer"]);
 const INVITATION_TTL_HOURS = 7 * 24;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+type HouseholdRole = "owner" | "editor" | "viewer";
 
 function requireAuthUserId(req: Request, res: Response): string | null {
   if (!req.authUserId) {
@@ -29,12 +30,12 @@ function normalizeEmail(value: string | null): string | null {
 function normalizeRole(
   value: unknown,
   defaultRole = "viewer"
-): "owner" | "editor" | "viewer" | null {
+): HouseholdRole | null {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : defaultRole;
   if (!HOUSEHOLD_ROLES.has(normalized)) {
     return null;
   }
-  return normalized as "owner" | "editor" | "viewer";
+  return normalized as HouseholdRole;
 }
 
 async function getMemberRole(householdId: string, userId: string): Promise<string | null> {
@@ -51,6 +52,20 @@ async function getMemberRole(householdId: string, userId: string): Promise<strin
     return null;
   }
   return membership.rows[0].role;
+}
+
+async function requireOwnerForHousehold(
+  householdId: string,
+  userId: string
+): Promise<{ ok: true } | { ok: false; status: 403 | 404; message: string }> {
+  const requesterRole = await getMemberRole(householdId, userId);
+  if (!requesterRole) {
+    return { ok: false, status: 404, message: "Household not found" };
+  }
+  if (requesterRole !== "owner") {
+    return { ok: false, status: 403, message: "Only owners can manage household access" };
+  }
+  return { ok: true };
 }
 
 householdsRouter.get("/households", async (req, res) => {
@@ -184,6 +199,54 @@ householdsRouter.get("/households/:householdId/members", async (req, res) => {
   }
 });
 
+householdsRouter.get("/households/:householdId/invitations", async (req, res) => {
+  const userId = requireAuthUserId(req, res);
+  if (!userId) {
+    return;
+  }
+
+  const householdId = req.params.householdId;
+  if (!isUuid(householdId)) {
+    return sendValidationError(res, "Invalid household id");
+  }
+
+  try {
+    const ownerCheck = await requireOwnerForHousehold(householdId, userId);
+    if (!ownerCheck.ok) {
+      return res.status(ownerCheck.status).json({ error: ownerCheck.message });
+    }
+
+    const invites = await pool.query<{
+      id: string;
+      household_id: string;
+      email: string;
+      role: string;
+      expires_at: string;
+      status: string;
+      created_at: string;
+    }>(
+      `
+      SELECT id, household_id, email, role, expires_at, status, created_at
+      FROM household_invitations
+      WHERE household_id = $1
+        AND status = 'pending'
+        AND revoked_at IS NULL
+        AND accepted_at IS NULL
+        AND expires_at > now()
+      ORDER BY created_at DESC
+      `,
+      [householdId]
+    );
+
+    return res.status(200).json({
+      household_id: householdId,
+      invitations: invites.rows,
+    });
+  } catch (error) {
+    return sendInternalError(error, res);
+  }
+});
+
 householdsRouter.post("/households/:householdId/invitations", async (req, res) => {
   const userId = requireAuthUserId(req, res);
   if (!userId) {
@@ -205,12 +268,9 @@ householdsRouter.post("/households/:householdId/invitations", async (req, res) =
   }
 
   try {
-    const requesterRole = await getMemberRole(householdId, userId);
-    if (!requesterRole) {
-      return res.status(404).json({ error: "Household not found" });
-    }
-    if (requesterRole !== "owner") {
-      return res.status(403).json({ error: "Only owners can manage invitations" });
+    const ownerCheck = await requireOwnerForHousehold(householdId, userId);
+    if (!ownerCheck.ok) {
+      return res.status(ownerCheck.status).json({ error: ownerCheck.message });
     }
 
     const existingMember = await pool.query(
@@ -298,12 +358,9 @@ householdsRouter.delete("/households/:householdId/invitations/:invitationId", as
   }
 
   try {
-    const requesterRole = await getMemberRole(householdId, userId);
-    if (!requesterRole) {
-      return res.status(404).json({ error: "Household not found" });
-    }
-    if (requesterRole !== "owner") {
-      return res.status(403).json({ error: "Only owners can manage invitations" });
+    const ownerCheck = await requireOwnerForHousehold(householdId, userId);
+    if (!ownerCheck.ok) {
+      return res.status(ownerCheck.status).json({ error: ownerCheck.message });
     }
 
     const revoked = await pool.query(
@@ -326,6 +383,167 @@ householdsRouter.delete("/households/:householdId/invitations/:invitationId", as
     return res.status(200).json({ revoked: true });
   } catch (error) {
     return sendInternalError(error, res);
+  }
+});
+
+householdsRouter.patch("/households/:householdId/members/:memberUserId", async (req, res) => {
+  const userId = requireAuthUserId(req, res);
+  if (!userId) {
+    return;
+  }
+
+  const householdId = req.params.householdId;
+  const memberUserId = req.params.memberUserId;
+  if (!isUuid(householdId)) {
+    return sendValidationError(res, "Invalid household id");
+  }
+  if (!isUuid(memberUserId)) {
+    return sendValidationError(res, "Invalid member user id");
+  }
+
+  const role = normalizeRole(req.body.role, "viewer");
+  if (!role) {
+    return sendValidationError(res, "role must be one of owner, editor, viewer");
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const ownerCheck = await requireOwnerForHousehold(householdId, userId);
+    if (!ownerCheck.ok) {
+      await client.query("ROLLBACK");
+      return res.status(ownerCheck.status).json({ error: ownerCheck.message });
+    }
+
+    const membership = await client.query<{ role: HouseholdRole }>(
+      `
+      SELECT role
+      FROM household_members
+      WHERE household_id = $1 AND user_id = $2
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [householdId, memberUserId]
+    );
+
+    if ((membership.rowCount ?? 0) === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Member not found" });
+    }
+
+    const currentRole = membership.rows[0].role;
+    if (currentRole === "owner" && role !== "owner") {
+      const ownerCountResult = await client.query<{ count: string }>(
+        `
+        SELECT COUNT(*)::text AS count
+        FROM household_members
+        WHERE household_id = $1 AND role = 'owner'
+        `,
+        [householdId]
+      );
+      const ownerCount = Number(ownerCountResult.rows[0]?.count ?? "0");
+      if (ownerCount <= 1) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "Cannot remove the last household owner" });
+      }
+    }
+
+    await client.query(
+      `
+      UPDATE household_members
+      SET role = $3
+      WHERE household_id = $1 AND user_id = $2
+      `,
+      [householdId, memberUserId, role]
+    );
+
+    await client.query("COMMIT");
+    return res.status(200).json({
+      household_id: householdId,
+      member_user_id: memberUserId,
+      role,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    return sendInternalError(error, res);
+  } finally {
+    client.release();
+  }
+});
+
+householdsRouter.delete("/households/:householdId/members/:memberUserId", async (req, res) => {
+  const userId = requireAuthUserId(req, res);
+  if (!userId) {
+    return;
+  }
+
+  const householdId = req.params.householdId;
+  const memberUserId = req.params.memberUserId;
+  if (!isUuid(householdId)) {
+    return sendValidationError(res, "Invalid household id");
+  }
+  if (!isUuid(memberUserId)) {
+    return sendValidationError(res, "Invalid member user id");
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const ownerCheck = await requireOwnerForHousehold(householdId, userId);
+    if (!ownerCheck.ok) {
+      await client.query("ROLLBACK");
+      return res.status(ownerCheck.status).json({ error: ownerCheck.message });
+    }
+
+    const membership = await client.query<{ role: HouseholdRole }>(
+      `
+      SELECT role
+      FROM household_members
+      WHERE household_id = $1 AND user_id = $2
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [householdId, memberUserId]
+    );
+
+    if ((membership.rowCount ?? 0) === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Member not found" });
+    }
+
+    if (membership.rows[0].role === "owner") {
+      const ownerCountResult = await client.query<{ count: string }>(
+        `
+        SELECT COUNT(*)::text AS count
+        FROM household_members
+        WHERE household_id = $1 AND role = 'owner'
+        `,
+        [householdId]
+      );
+      const ownerCount = Number(ownerCountResult.rows[0]?.count ?? "0");
+      if (ownerCount <= 1) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "Cannot remove the last household owner" });
+      }
+    }
+
+    await client.query(
+      `
+      DELETE FROM household_members
+      WHERE household_id = $1 AND user_id = $2
+      `,
+      [householdId, memberUserId]
+    );
+
+    await client.query("COMMIT");
+    return res.status(200).json({ removed: true, member_user_id: memberUserId });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    return sendInternalError(error, res);
+  } finally {
+    client.release();
   }
 });
 

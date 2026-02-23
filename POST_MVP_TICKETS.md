@@ -170,7 +170,7 @@ Status: `done`
   - Tests prove collaboration works without data leakage.
 
 ## 6.6-06) Sharing UI (Invite + Members + Role Management)
-Status: `todo`
+Status: `done`
 - Depends on: `6.6-03`, `6.6-04`
 - Scope:
   - Add household settings UI for invites, member list, and role edits.
@@ -354,8 +354,8 @@ Status: `todo`
 
 ## Suggested Next Batch
 
-1. `6.6-06` Sharing UI (Invite + Members + Role Management)
-2. `6-01` Move Impact API
-3. `6-02` Move Confirmation UX
-4. `6-03` Bulk Impact Visibility + Tests
-5. `7-01` Embeddings Store + Provider Integration
+1. `6-01` Move Impact API
+2. `6-02` Move Confirmation UX
+3. `6-03` Bulk Impact Visibility + Tests
+4. `7-01` Embeddings Store + Provider Integration
+5. `7-02` Backfill + Reindex Job

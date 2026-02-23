@@ -82,6 +82,11 @@ header p {
   gap: 8px;
 }
 
+label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .search-row {
   display: flex;
   gap: 8px;
@@ -164,6 +169,80 @@ button.danger {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.household-top {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.household-create,
+.household-invite {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fcfdfc;
+  padding: 10px;
+}
+
+.household-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.management-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.management-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fcfdfc;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.management-main {
+  min-width: 0;
+}
+
+.management-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.management-subtle {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.management-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.management-actions select {
+  min-width: 98px;
+}
+
+.management-empty {
+  color: var(--muted);
+  font-size: 13px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fcfdfc;
 }
 
 .plus-btn {
@@ -393,10 +472,16 @@ button.danger {
     grid-template-columns: 1fr;
   }
 
+  .household-top,
+  .household-grid {
+    grid-template-columns: 1fr;
+  }
+
   .search-row,
   .move-row,
   .button-row,
-  .upload-row {
+  .upload-row,
+  .management-actions {
     flex-direction: column;
   }
 

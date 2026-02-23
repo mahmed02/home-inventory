@@ -1291,3 +1291,118 @@ test("Cross-household access is denied when selecting another household id", asy
   assert.equal(outsiderCannotWriteHousehold.status, 404);
   assert.deepEqual(outsiderCannotWriteHousehold.json, { error: "Household not found" });
 });
+
+test("Household owners can list invites, update roles, and remove members", async () => {
+  const owner = await request("/auth/register", {
+    method: "POST",
+    body: { email: "manage-owner@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(owner.status, 201);
+  const ownerJson = owner.json as { token: string; user: { id: string } };
+  const ownerToken = ownerJson.token;
+  const ownerUserId = ownerJson.user.id;
+
+  const member = await request("/auth/register", {
+    method: "POST",
+    body: { email: "manage-member@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(member.status, 201);
+  const memberJson = member.json as { token: string; user: { id: string } };
+  const memberToken = memberJson.token;
+  const memberUserId = memberJson.user.id;
+
+  const ownerHouseholds = await request("/households", { token: ownerToken });
+  assert.equal(ownerHouseholds.status, 200);
+  const householdId = (ownerHouseholds.json as { households: Array<{ id: string }> }).households[0].id;
+  const sharedHeader = { "x-household-id": householdId };
+
+  const memberInvite = await request(`/households/${householdId}/invitations`, {
+    method: "POST",
+    token: ownerToken,
+    body: { email: "manage-member@example.com", role: "viewer" },
+  });
+  assert.equal(memberInvite.status, 201);
+  const memberInviteToken = (memberInvite.json as { invitation_token: string }).invitation_token;
+
+  const pendingInvite = await request(`/households/${householdId}/invitations`, {
+    method: "POST",
+    token: ownerToken,
+    body: { email: "pending-only@example.com", role: "viewer" },
+  });
+  assert.equal(pendingInvite.status, 201);
+
+  const ownerInvites = await request(`/households/${householdId}/invitations`, {
+    token: ownerToken,
+  });
+  assert.equal(ownerInvites.status, 200);
+  const ownerInvitesJson = ownerInvites.json as { invitations: Array<{ email: string }> };
+  assert.ok(ownerInvitesJson.invitations.some((invite) => invite.email === "manage-member@example.com"));
+  assert.ok(ownerInvitesJson.invitations.some((invite) => invite.email === "pending-only@example.com"));
+
+  const accepted = await request("/households/invitations/accept", {
+    method: "POST",
+    token: memberToken,
+    body: { token: memberInviteToken },
+  });
+  assert.equal(accepted.status, 200);
+
+  const memberCannotListInvites = await request(`/households/${householdId}/invitations`, {
+    token: memberToken,
+  });
+  assert.equal(memberCannotListInvites.status, 403);
+
+  const promoteMember = await request(`/households/${householdId}/members/${memberUserId}`, {
+    method: "PATCH",
+    token: ownerToken,
+    body: { role: "editor" },
+  });
+  assert.equal(promoteMember.status, 200);
+  assert.deepEqual(promoteMember.json, {
+    household_id: householdId,
+    member_user_id: memberUserId,
+    role: "editor",
+  });
+
+  const editorCanCreate = await request("/locations", {
+    method: "POST",
+    token: memberToken,
+    headers: sharedHeader,
+    body: { name: "Editor Can Create", code: "ED1", type: "room", parent_id: null },
+  });
+  assert.equal(editorCanCreate.status, 201);
+
+  const demoteMember = await request(`/households/${householdId}/members/${memberUserId}`, {
+    method: "PATCH",
+    token: ownerToken,
+    body: { role: "viewer" },
+  });
+  assert.equal(demoteMember.status, 200);
+
+  const viewerCannotCreate = await request("/locations", {
+    method: "POST",
+    token: memberToken,
+    headers: sharedHeader,
+    body: { name: "Viewer Blocked", code: "VW1", type: "room", parent_id: null },
+  });
+  assert.equal(viewerCannotCreate.status, 403);
+
+  const removeMember = await request(`/households/${householdId}/members/${memberUserId}`, {
+    method: "DELETE",
+    token: ownerToken,
+  });
+  assert.equal(removeMember.status, 200);
+  assert.deepEqual(removeMember.json, { removed: true, member_user_id: memberUserId });
+
+  const removedMemberCannotAccess = await request("/inventory/tree", {
+    token: memberToken,
+    headers: sharedHeader,
+  });
+  assert.equal(removedMemberCannotAccess.status, 404);
+  assert.deepEqual(removedMemberCannotAccess.json, { error: "Household not found" });
+
+  const cannotRemoveLastOwner = await request(`/households/${householdId}/members/${ownerUserId}`, {
+    method: "DELETE",
+    token: ownerToken,
+  });
+  assert.equal(cannotRemoveLastOwner.status, 409);
+});

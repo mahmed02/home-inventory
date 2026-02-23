@@ -137,7 +137,7 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - [x] Refactor inventory ownership from user-only scope to household scope
 - [x] Enforce role-based permissions on create/update/delete endpoints
 - [x] Add cross-household authorization tests
-- [ ] Add sharing UX
+- [x] Add sharing UX
 
 ### Phase 7 — Semantic Search
 - [ ] Add embeddings column/store

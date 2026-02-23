@@ -62,6 +62,57 @@
         </div>
       </section>
 
+      <section id="householdPanel" class="panel" hidden>
+        <div class="panel-head">
+          <h2>Household Sharing</h2>
+          <div class="actions-row">
+            <button id="refreshHouseholdsBtn" type="button">Refresh</button>
+          </div>
+        </div>
+
+        <div class="household-top">
+          <div class="stack">
+            <label for="householdSelect">Active Household</label>
+            <select id="householdSelect">
+              <option value="">No household selected</option>
+            </select>
+            <p id="householdRoleHint" class="hint"></p>
+          </div>
+
+          <form id="createHouseholdForm" class="stack household-create">
+            <h3>Create Household</h3>
+            <input id="createHouseholdName" type="text" placeholder="Household name" />
+            <button type="submit">Create Household</button>
+          </form>
+        </div>
+
+        <div class="household-grid">
+          <div class="stack">
+            <form id="inviteMemberForm" class="stack household-invite">
+              <h3>Invite Member</h3>
+              <input id="inviteEmail" type="email" placeholder="Email" required />
+              <select id="inviteRole">
+                <option value="viewer">Viewer</option>
+                <option value="editor">Editor</option>
+                <option value="owner">Owner</option>
+              </select>
+              <button id="inviteMemberBtn" type="submit">Send Invite</button>
+              <p id="inviteTokenHint" class="hint"></p>
+            </form>
+
+            <div class="stack">
+              <h3>Pending Invitations</h3>
+              <ul id="householdInvitations" class="management-list"></ul>
+            </div>
+          </div>
+
+          <div class="stack">
+            <h3>Members</h3>
+            <ul id="householdMembers" class="management-list"></ul>
+          </div>
+        </div>
+      </section>
+
       <section class="panel">
         <h2>Search</h2>
         <div class="search-row">

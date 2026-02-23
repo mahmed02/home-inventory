@@ -22,6 +22,20 @@ const forgotEmailInput = document.getElementById("forgotEmail");
 const resetTokenInput = document.getElementById("resetToken");
 const resetNewPasswordInput = document.getElementById("resetNewPassword");
 
+const householdPanelEl = document.getElementById("householdPanel");
+const refreshHouseholdsBtn = document.getElementById("refreshHouseholdsBtn");
+const householdSelect = document.getElementById("householdSelect");
+const householdRoleHintEl = document.getElementById("householdRoleHint");
+const createHouseholdForm = document.getElementById("createHouseholdForm");
+const createHouseholdNameInput = document.getElementById("createHouseholdName");
+const inviteMemberForm = document.getElementById("inviteMemberForm");
+const inviteMemberBtn = document.getElementById("inviteMemberBtn");
+const inviteEmailInput = document.getElementById("inviteEmail");
+const inviteRoleSelect = document.getElementById("inviteRole");
+const inviteTokenHintEl = document.getElementById("inviteTokenHint");
+const householdMembersEl = document.getElementById("householdMembers");
+const householdInvitationsEl = document.getElementById("householdInvitations");
+
 const treeViewEl = document.getElementById("treeView");
 const treeTextEl = document.getElementById("treeText");
 const treeMetaEl = document.getElementById("treeMeta");
@@ -97,9 +111,16 @@ let selectedLocationId = null;
 let selectedItemId = null;
 let authToken = "";
 let authUser = null;
+let households = [];
+let householdMembers = [];
+let householdInvitations = [];
+let activeHouseholdId = "";
+let activeHouseholdRole = "";
+let refreshingHouseholds = false;
 
 const AUTH_TOKEN_STORAGE_KEY = "home_inventory_auth_token";
 const AUTH_USER_STORAGE_KEY = "home_inventory_auth_user";
+const ACTIVE_HOUSEHOLD_STORAGE_KEY = "home_inventory_active_household_id";
 const allModals = [
   createActionsModal,
   createLocationModal,
@@ -134,6 +155,7 @@ function applyAuthUiState() {
     authLoggedInEl.hidden = false;
     authUserEmailEl.textContent = authUser.email || "account";
     setAuthStateHint("Signed in");
+    householdPanelEl.hidden = false;
     return;
   }
 
@@ -141,17 +163,32 @@ function applyAuthUiState() {
   authLoggedInEl.hidden = true;
   authUserEmailEl.textContent = "-";
   setAuthStateHint("Not signed in");
+  householdPanelEl.hidden = true;
 }
 
 function setAuthSession(token, user) {
   authToken = token || "";
   authUser = user || null;
+  if (authToken && authUser) {
+    restoreActiveHousehold();
+  } else {
+    activeHouseholdId = "";
+    activeHouseholdRole = "";
+  }
   persistAuthSession();
   applyAuthUiState();
+  renderHouseholdPanel();
 }
 
 function clearAuthSession() {
   setAuthSession("", null);
+  households = [];
+  householdMembers = [];
+  householdInvitations = [];
+  activeHouseholdId = "";
+  activeHouseholdRole = "";
+  localStorage.removeItem(ACTIVE_HOUSEHOLD_STORAGE_KEY);
+  renderHouseholdPanel();
 }
 
 function restoreAuthSessionFromStorage() {
@@ -179,6 +216,235 @@ async function hydrateSessionUser() {
   }
 }
 
+function isViewerRoleActive() {
+  return Boolean(authToken && activeHouseholdId && activeHouseholdRole === "viewer");
+}
+
+function activeHousehold() {
+  return households.find((household) => household.id === activeHouseholdId) || null;
+}
+
+function persistActiveHousehold() {
+  if (!activeHouseholdId) {
+    localStorage.removeItem(ACTIVE_HOUSEHOLD_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(ACTIVE_HOUSEHOLD_STORAGE_KEY, activeHouseholdId);
+}
+
+function restoreActiveHousehold() {
+  if (!authToken) {
+    activeHouseholdId = "";
+    return;
+  }
+  activeHouseholdId = localStorage.getItem(ACTIVE_HOUSEHOLD_STORAGE_KEY) || "";
+}
+
+function setActiveHousehold(id) {
+  activeHouseholdId = id || "";
+  const selected = activeHousehold();
+  activeHouseholdRole = selected ? selected.role : "";
+  persistActiveHousehold();
+}
+
+function renderManagementListEmpty(targetEl, message) {
+  targetEl.innerHTML = `<li class="management-empty">${escapeHtml(message)}</li>`;
+}
+
+function renderHouseholdPanel() {
+  if (!authToken || !authUser) {
+    householdRoleHintEl.textContent = "Sign in to manage household sharing.";
+    renderManagementListEmpty(householdMembersEl, "No household selected.");
+    renderManagementListEmpty(householdInvitationsEl, "No household selected.");
+    householdSelect.innerHTML = '<option value="">No household selected</option>';
+    inviteTokenHintEl.textContent = "";
+    updateActionState();
+    return;
+  }
+
+  if (!households.length) {
+    householdRoleHintEl.textContent = "No households yet. Create one to start sharing.";
+    householdSelect.innerHTML = '<option value="">No household selected</option>';
+    renderManagementListEmpty(householdMembersEl, "No members to show.");
+    renderManagementListEmpty(householdInvitationsEl, "No invitations to show.");
+    inviteTokenHintEl.textContent = "";
+    updateActionState();
+    return;
+  }
+
+  const options = households
+    .map((household) => {
+      const selected = household.id === activeHouseholdId ? " selected" : "";
+      const label = `${household.name} (${household.role})`;
+      return `<option value="${escapeAttr(household.id)}"${selected}>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  householdSelect.innerHTML = options;
+
+  const selectedHousehold = activeHousehold();
+  if (!selectedHousehold) {
+    householdRoleHintEl.textContent = "Select a household.";
+    renderManagementListEmpty(householdMembersEl, "No members to show.");
+    renderManagementListEmpty(householdInvitationsEl, "No invitations to show.");
+    updateActionState();
+    return;
+  }
+
+  householdRoleHintEl.textContent = `Role: ${selectedHousehold.role}`;
+
+  if (!householdMembers.length) {
+    renderManagementListEmpty(householdMembersEl, "No members to show.");
+  } else {
+    const ownerCount = householdMembers.filter((member) => member.role === "owner").length;
+    const canManage = selectedHousehold.role === "owner";
+    householdMembersEl.innerHTML = householdMembers
+      .map((member) => {
+        const displayName = member.display_name ? `${member.display_name} (${member.email})` : member.email;
+        const isSelf = authUser && member.user_id === authUser.id;
+        const roleOptions = ["owner", "editor", "viewer"]
+          .map((role) => {
+            const selected = role === member.role ? " selected" : "";
+            return `<option value="${role}"${selected}>${role}</option>`;
+          })
+          .join("");
+        const cannotRemoveLastOwner = member.role === "owner" && ownerCount <= 1;
+        const cannotChangeLastOwner = member.role === "owner" && ownerCount <= 1;
+
+        const controls = canManage
+          ? `
+            <div class="management-actions">
+              <select data-member-role-id="${escapeAttr(member.user_id)}" ${
+                cannotChangeLastOwner ? "disabled" : ""
+              }>
+                ${roleOptions}
+              </select>
+              <button
+                type="button"
+                class="member-role-save-btn"
+                data-member-save-id="${escapeAttr(member.user_id)}"
+                ${cannotChangeLastOwner ? "disabled" : ""}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                class="danger"
+                data-member-remove-id="${escapeAttr(member.user_id)}"
+                ${cannotRemoveLastOwner ? "disabled" : ""}
+              >
+                Remove
+              </button>
+            </div>
+          `
+          : "";
+
+        return `
+          <li class="management-item">
+            <div class="management-main">
+              <div class="management-title">${escapeHtml(displayName)}${isSelf ? " (you)" : ""}</div>
+              <div class="management-subtle">Role: ${escapeHtml(member.role)}</div>
+            </div>
+            ${controls}
+          </li>
+        `;
+      })
+      .join("");
+  }
+
+  if (!householdInvitations.length) {
+    renderManagementListEmpty(householdInvitationsEl, "No pending invitations.");
+  } else {
+    const canManageInvites = selectedHousehold.role === "owner";
+    householdInvitationsEl.innerHTML = householdInvitations
+      .map((invite) => {
+        const expiresText = new Date(invite.expires_at).toLocaleString();
+        return `
+          <li class="management-item">
+            <div class="management-main">
+              <div class="management-title">${escapeHtml(invite.email)}</div>
+              <div class="management-subtle">Role: ${escapeHtml(invite.role)} • Expires: ${escapeHtml(expiresText)}</div>
+            </div>
+            ${
+              canManageInvites
+                ? `<button type="button" class="danger" data-invite-revoke-id="${escapeAttr(invite.id)}">Revoke</button>`
+                : ""
+            }
+          </li>
+        `;
+      })
+      .join("");
+  }
+
+  inviteMemberBtn.disabled = selectedHousehold.role !== "owner";
+  updateActionState();
+}
+
+async function refreshHouseholdMembersAndInvites() {
+  if (!activeHouseholdId) {
+    householdMembers = [];
+    householdInvitations = [];
+    renderHouseholdPanel();
+    return;
+  }
+
+  const membersPayload = await fetchJson(`/households/${activeHouseholdId}/members`);
+  householdMembers = membersPayload.members || [];
+  activeHouseholdRole = membersPayload.requester_role || activeHouseholdRole;
+
+  if (activeHouseholdRole === "owner") {
+    const invitesPayload = await fetchJson(`/households/${activeHouseholdId}/invitations`);
+    householdInvitations = invitesPayload.invitations || [];
+  } else {
+    householdInvitations = [];
+  }
+
+  renderHouseholdPanel();
+}
+
+async function refreshHouseholds(preferredHouseholdId = "") {
+  if (!authToken) {
+    households = [];
+    householdMembers = [];
+    householdInvitations = [];
+    activeHouseholdId = "";
+    activeHouseholdRole = "";
+    renderHouseholdPanel();
+    return;
+  }
+
+  if (refreshingHouseholds) {
+    return;
+  }
+
+  refreshingHouseholds = true;
+  try {
+    const payload = await fetchJson("/households");
+    households = payload.households || [];
+
+    if (!households.length) {
+      activeHouseholdId = "";
+      activeHouseholdRole = "";
+      householdMembers = [];
+      householdInvitations = [];
+      renderHouseholdPanel();
+      return;
+    }
+
+    const availableIds = new Set(households.map((household) => household.id));
+    const candidateId =
+      preferredHouseholdId || activeHouseholdId || localStorage.getItem(ACTIVE_HOUSEHOLD_STORAGE_KEY) || "";
+    if (!candidateId || !availableIds.has(candidateId)) {
+      setActiveHousehold(households[0].id);
+    } else {
+      setActiveHousehold(candidateId);
+    }
+
+    await refreshHouseholdMembersAndInvites();
+  } finally {
+    refreshingHouseholds = false;
+  }
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -194,27 +460,36 @@ function escapeAttr(value) {
 
 function updateActionState() {
   const hasSelection = Boolean(selectedLocationId || selectedItemId);
-  openEditBtn.disabled = !hasSelection;
+  const readOnly = isViewerRoleActive();
+  openCreateActionsBtn.disabled = readOnly;
+  openEditBtn.disabled = !hasSelection || readOnly;
+  seedBtn.disabled = readOnly;
 
   if (selectedLocationId) {
     const location = locationMap.get(selectedLocationId);
-    selectionHintEl.textContent = location
-      ? `Selected location: ${location.name}`
-      : "Select a location or item in the tree to edit.";
+    selectionHintEl.textContent = readOnly
+      ? `Selected location: ${location ? location.name : "unknown"} (viewer access is read-only)`
+      : location
+        ? `Selected location: ${location.name}`
+        : "Select a location or item in the tree to edit.";
     openEditBtn.textContent = "Edit Location";
     return;
   }
 
   if (selectedItemId) {
     const item = itemMap.get(selectedItemId);
-    selectionHintEl.textContent = item
-      ? `Selected item: ${item.name}`
-      : "Select a location or item in the tree to edit.";
+    selectionHintEl.textContent = readOnly
+      ? `Selected item: ${item ? item.name : "unknown"} (viewer access is read-only)`
+      : item
+        ? `Selected item: ${item.name}`
+        : "Select a location or item in the tree to edit.";
     openEditBtn.textContent = "Edit Item";
     return;
   }
 
-  selectionHintEl.textContent = "Select a location or item in the tree to edit.";
+  selectionHintEl.textContent = readOnly
+    ? "Viewer access is read-only for this household."
+    : "Select a location or item in the tree to edit.";
   openEditBtn.textContent = "Edit Selected";
 }
 
@@ -262,6 +537,9 @@ async function fetchJson(path, options = {}) {
 
   if (authToken && !skipAuth) {
     headers.Authorization = `Bearer ${authToken}`;
+    if (activeHouseholdId && !headers["x-household-id"]) {
+      headers["x-household-id"] = activeHouseholdId;
+    }
   }
 
   const response = await fetch(path, {
@@ -1024,6 +1302,193 @@ refreshTreeBtn.addEventListener("click", () => {
   void refreshInventoryTree();
 });
 
+refreshHouseholdsBtn.addEventListener("click", async () => {
+  refreshHouseholdsBtn.disabled = true;
+  setStatus("Refreshing households...");
+  try {
+    await refreshHouseholds();
+    hideEditors();
+    await refreshAll();
+    setStatus("Households refreshed.");
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    refreshHouseholdsBtn.disabled = false;
+  }
+});
+
+householdSelect.addEventListener("change", async () => {
+  const nextHouseholdId = householdSelect.value || "";
+  setActiveHousehold(nextHouseholdId);
+
+  if (!activeHouseholdId) {
+    householdMembers = [];
+    householdInvitations = [];
+    renderHouseholdPanel();
+    return;
+  }
+
+  setStatus("Switching household...");
+  try {
+    await refreshHouseholdMembersAndInvites();
+    hideEditors();
+    await refreshAll();
+    resultsEl.innerHTML = "";
+    metaEl.textContent = "";
+    setStatus("Household switched.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+});
+
+createHouseholdForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const name = createHouseholdNameInput.value.trim();
+  if (!name) {
+    setStatus("Household name is required.");
+    return;
+  }
+
+  try {
+    const payload = await fetchJson("/households", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    createHouseholdForm.reset();
+    await refreshHouseholds(payload.household?.id || "");
+    hideEditors();
+    await refreshAll();
+    setStatus("Household created.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+});
+
+inviteMemberForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  if (!activeHouseholdId) {
+    setStatus("Select a household first.");
+    return;
+  }
+
+  const email = inviteEmailInput.value.trim();
+  const role = inviteRoleSelect.value;
+  if (!email) {
+    setStatus("Invite email is required.");
+    return;
+  }
+
+  inviteMemberBtn.disabled = true;
+  inviteTokenHintEl.textContent = "";
+  try {
+    const payload = await fetchJson(`/households/${activeHouseholdId}/invitations`, {
+      method: "POST",
+      body: JSON.stringify({ email, role }),
+    });
+    inviteMemberForm.reset();
+    inviteTokenHintEl.textContent = `Invitation token (share securely): ${payload.invitation_token}`;
+    await refreshHouseholdMembersAndInvites();
+    setStatus(`Invitation created for ${email}.`);
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    inviteMemberBtn.disabled = false;
+  }
+});
+
+householdMembersEl.addEventListener("click", async (event) => {
+  const saveBtn = event.target.closest("[data-member-save-id]");
+  if (saveBtn) {
+    const memberUserId = saveBtn.getAttribute("data-member-save-id");
+    const roleSelect = householdMembersEl.querySelector(`[data-member-role-id="${memberUserId}"]`);
+    const role = roleSelect ? roleSelect.value : "";
+    if (!memberUserId || !role || !activeHouseholdId) {
+      setStatus("Invalid member role update request.");
+      return;
+    }
+
+    saveBtn.disabled = true;
+    try {
+      await fetchJson(`/households/${activeHouseholdId}/members/${memberUserId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      });
+      await refreshHouseholds(activeHouseholdId);
+      hideEditors();
+      await refreshAll();
+      setStatus("Member role updated.");
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      saveBtn.disabled = false;
+    }
+    return;
+  }
+
+  const removeBtn = event.target.closest("[data-member-remove-id]");
+  if (!removeBtn) {
+    return;
+  }
+
+  const memberUserId = removeBtn.getAttribute("data-member-remove-id");
+  if (!memberUserId || !activeHouseholdId) {
+    setStatus("Invalid remove request.");
+    return;
+  }
+
+  const ok = window.confirm("Remove this member from household?");
+  if (!ok) {
+    return;
+  }
+
+  removeBtn.disabled = true;
+  try {
+    await fetchJson(`/households/${activeHouseholdId}/members/${memberUserId}`, {
+      method: "DELETE",
+    });
+    await refreshHouseholds(activeHouseholdId);
+    hideEditors();
+    await refreshAll();
+    setStatus("Member removed.");
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    removeBtn.disabled = false;
+  }
+});
+
+householdInvitationsEl.addEventListener("click", async (event) => {
+  const revokeBtn = event.target.closest("[data-invite-revoke-id]");
+  if (!revokeBtn) {
+    return;
+  }
+
+  const inviteId = revokeBtn.getAttribute("data-invite-revoke-id");
+  if (!inviteId || !activeHouseholdId) {
+    setStatus("Invalid revoke request.");
+    return;
+  }
+
+  const ok = window.confirm("Revoke this invitation?");
+  if (!ok) {
+    return;
+  }
+
+  revokeBtn.disabled = true;
+  try {
+    await fetchJson(`/households/${activeHouseholdId}/invitations/${inviteId}`, {
+      method: "DELETE",
+    });
+    await refreshHouseholdMembersAndInvites();
+    setStatus("Invitation revoked.");
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    revokeBtn.disabled = false;
+  }
+});
+
 seedBtn.addEventListener("click", async () => {
   seedBtn.disabled = true;
   setStatus("Seeding demo data...");
@@ -1083,6 +1548,7 @@ loginForm.addEventListener("submit", async (event) => {
     });
     setAuthSession(payload.token, payload.user);
     loginForm.reset();
+    await refreshHouseholds();
     hideEditors();
     await refreshAll();
     setStatus("Signed in.");
@@ -1114,6 +1580,7 @@ registerForm.addEventListener("submit", async (event) => {
     });
     setAuthSession(payload.token, payload.user);
     registerForm.reset();
+    await refreshHouseholds();
     hideEditors();
     await refreshAll();
     setStatus("Account created and signed in.");
@@ -1184,6 +1651,7 @@ logoutBtn.addEventListener("click", async () => {
     treeMetaEl.textContent = "";
     treeViewEl.innerHTML = "";
     treeTextEl.textContent = "";
+    householdRoleHintEl.textContent = "";
     setStatus("Signed out.");
   }
 });
@@ -1203,6 +1671,7 @@ window.addEventListener("load", async () => {
   try {
     restoreAuthSessionFromStorage();
     await hydrateSessionUser();
+    await refreshHouseholds();
     hideEditors();
     await refreshAll();
     updateActionState();
