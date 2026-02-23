@@ -20,7 +20,7 @@ Ticket status values:
 ## Phase 6 — Container Movement Optimization
 
 ## 6-01) Move Impact API
-Status: `todo`
+Status: `done`
 - Scope:
   - Add endpoint to preview move impact before applying location move.
   - Return affected item count and sample before/after paths.
@@ -354,8 +354,8 @@ Status: `todo`
 
 ## Suggested Next Batch
 
-1. `6-01` Move Impact API
-2. `6-02` Move Confirmation UX
-3. `6-03` Bulk Impact Visibility + Tests
-4. `7-01` Embeddings Store + Provider Integration
-5. `7-02` Backfill + Reindex Job
+1. `6-02` Move Confirmation UX
+2. `6-03` Bulk Impact Visibility + Tests
+3. `7-01` Embeddings Store + Provider Integration
+4. `7-02` Backfill + Reindex Job
+5. `7-03` Semantic Search API

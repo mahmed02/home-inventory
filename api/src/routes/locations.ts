@@ -20,6 +20,7 @@ import { isUuid, normalizeOptionalText } from "../utils";
 const locationsRouter = Router();
 
 type TreeNode = LocationRow & { children: TreeNode[] };
+type LocationPathNode = { id: string; name: string; parent_id: string | null };
 
 async function resolveScope(req: Request, res: Response) {
   const scopeResult = await resolveInventoryScope(req);
@@ -36,6 +37,63 @@ function ensureWriteAccess(scope: InventoryScope, res: Response): boolean {
     return false;
   }
   return true;
+}
+
+function collectDescendantIds(
+  rootLocationId: string,
+  childrenByParent: Map<string | null, string[]>
+): string[] {
+  const visited = new Set<string>();
+  const stack = [rootLocationId];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+
+    const children = childrenByParent.get(current) || [];
+    for (const childId of children) {
+      if (!visited.has(childId)) {
+        stack.push(childId);
+      }
+    }
+  }
+
+  return [...visited];
+}
+
+function renderLocationPath(
+  locationId: string,
+  locationMapById: Map<string, LocationPathNode>,
+  movedLocationId: string | null,
+  movedNewParentId: string | null
+): string {
+  const names: string[] = [];
+  let cursor: string | null = locationId;
+  const visited = new Set<string>();
+
+  while (cursor) {
+    if (visited.has(cursor)) {
+      break;
+    }
+    visited.add(cursor);
+
+    const node = locationMapById.get(cursor);
+    if (!node) {
+      break;
+    }
+    names.push(node.name);
+
+    if (movedLocationId && cursor === movedLocationId) {
+      cursor = movedNewParentId;
+    } else {
+      cursor = node.parent_id;
+    }
+  }
+
+  return names.reverse().join(" > ");
 }
 
 function handleDbError(error: unknown, res: Response) {
@@ -242,6 +300,113 @@ locationsRouter.get("/locations/:id/path", async (req, res) => {
     }
 
     return res.status(200).json(result.rows[0]);
+  } catch (error) {
+    return sendInternalError(error, res);
+  }
+});
+
+locationsRouter.post("/locations/:id/move-impact", async (req, res) => {
+  const id = req.params.id;
+  if (!isUuid(id)) {
+    return sendValidationError(res, "Invalid location id");
+  }
+
+  const parentIdRaw = req.body.parent_id;
+  const parentId = parentIdRaw === null ? null : normalizeOptionalText(parentIdRaw);
+  if (parentId && !isUuid(parentId)) {
+    return sendValidationError(res, "parent_id must be UUID or null");
+  }
+  if (parentId === id) {
+    return sendValidationError(res, "location cannot be its own parent");
+  }
+
+  try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+    if (!ensureWriteAccess(scope, res)) {
+      return;
+    }
+
+    const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 1);
+    const locationsResult = await pool.query<LocationPathNode>(
+      `
+      SELECT id, name, parent_id
+      FROM locations
+      WHERE ${locationScope.sql}
+      `,
+      [...locationScope.params]
+    );
+
+    const locationMapById = new Map<string, LocationPathNode>();
+    const childrenByParent = new Map<string | null, string[]>();
+
+    for (const row of locationsResult.rows) {
+      locationMapById.set(row.id, row);
+      const siblings = childrenByParent.get(row.parent_id) || [];
+      siblings.push(row.id);
+      childrenByParent.set(row.parent_id, siblings);
+    }
+
+    if (!locationMapById.has(id)) {
+      return sendNotFound(res, "Location not found");
+    }
+
+    if (parentId && !locationMapById.has(parentId)) {
+      return sendValidationError(res, "parent_id does not exist");
+    }
+
+    const descendantIds = collectDescendantIds(id, childrenByParent);
+    if (parentId && descendantIds.includes(parentId)) {
+      return sendValidationError(res, "Invalid move: would create a cycle");
+    }
+
+    const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const itemCountResult = await pool.query<{ count: string }>(
+      `
+      SELECT COUNT(*)::text AS count
+      FROM items
+      WHERE location_id = ANY($1::uuid[])
+        AND ${itemScope.sql}
+      `,
+      [descendantIds, ...itemScope.params]
+    );
+
+    const sampleItemsResult = await pool.query<{ id: string; name: string; location_id: string }>(
+      `
+      SELECT id, name, location_id
+      FROM items
+      WHERE location_id = ANY($1::uuid[])
+        AND ${itemScope.sql}
+      ORDER BY name ASC
+      LIMIT 10
+      `,
+      [descendantIds, ...itemScope.params]
+    );
+
+    const currentParentId = locationMapById.get(id)?.parent_id ?? null;
+    const sample = sampleItemsResult.rows.map((item) => {
+      const beforeLocationPath = renderLocationPath(item.location_id, locationMapById, null, null);
+      const afterLocationPath = renderLocationPath(item.location_id, locationMapById, id, parentId);
+      return {
+        item_id: item.id,
+        item_name: item.name,
+        before_path: `${beforeLocationPath} > ${item.name}`,
+        after_path: `${afterLocationPath} > ${item.name}`,
+      };
+    });
+
+    return res.status(200).json({
+      location_id: id,
+      from_parent_id: currentParentId,
+      to_parent_id: parentId,
+      affected_locations: descendantIds.length,
+      affected_items: Number(itemCountResult.rows[0]?.count ?? "0"),
+      sample,
+      sample_truncated:
+        Number(itemCountResult.rows[0]?.count ?? "0") > sampleItemsResult.rows.length,
+    });
   } catch (error) {
     return sendInternalError(error, res);
   }

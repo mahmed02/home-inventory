@@ -243,6 +243,132 @@ test("GET /locations/:id/path returns breadcrumb path", async () => {
   });
 });
 
+test("POST /locations/:id/move-impact previews affected items and paths", async () => {
+  const house = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(house.status, 201);
+  const houseId = (house.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: houseId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const shelf = await request("/locations", {
+    method: "POST",
+    body: { name: "Shelf", code: "S1", type: "shelf", parent_id: garageId },
+  });
+  assert.equal(shelf.status, 201);
+  const shelfId = (shelf.json as { id: string }).id;
+
+  const attic = await request("/locations", {
+    method: "POST",
+    body: { name: "Attic", code: "A1", type: "room", parent_id: houseId },
+  });
+  assert.equal(attic.status, 201);
+
+  const garageItem = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Compressor",
+      keywords: ["tool"],
+      location_id: garageId,
+    },
+  });
+  assert.equal(garageItem.status, 201);
+
+  const shelfItem = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Wrench Set",
+      keywords: ["tool"],
+      location_id: shelfId,
+    },
+  });
+  assert.equal(shelfItem.status, 201);
+
+  const unaffectedItem = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Holiday Decor",
+      keywords: ["seasonal"],
+      location_id: (attic.json as { id: string }).id,
+    },
+  });
+  assert.equal(unaffectedItem.status, 201);
+
+  const impact = await request(`/locations/${garageId}/move-impact`, {
+    method: "POST",
+    body: { parent_id: null },
+  });
+  assert.equal(impact.status, 200);
+
+  const impactJson = impact.json as {
+    location_id: string;
+    from_parent_id: string | null;
+    to_parent_id: string | null;
+    affected_locations: number;
+    affected_items: number;
+    sample: Array<{ item_name: string; before_path: string; after_path: string }>;
+    sample_truncated: boolean;
+  };
+
+  assert.equal(impactJson.location_id, garageId);
+  assert.equal(impactJson.from_parent_id, houseId);
+  assert.equal(impactJson.to_parent_id, null);
+  assert.equal(impactJson.affected_locations, 2);
+  assert.equal(impactJson.affected_items, 2);
+  assert.equal(impactJson.sample_truncated, false);
+
+  const byName = new Map(impactJson.sample.map((entry) => [entry.item_name, entry]));
+  assert.equal(byName.get("Compressor")?.before_path, "House > Garage > Compressor");
+  assert.equal(byName.get("Compressor")?.after_path, "Garage > Compressor");
+  assert.equal(byName.get("Wrench Set")?.before_path, "House > Garage > Shelf > Wrench Set");
+  assert.equal(byName.get("Wrench Set")?.after_path, "Garage > Shelf > Wrench Set");
+
+  const garageAfterPreview = await request(`/locations/${garageId}/path`);
+  assert.equal(garageAfterPreview.status, 200);
+  assert.deepEqual(garageAfterPreview.json, {
+    id: garageId,
+    name: "Garage",
+    path: "House > Garage",
+  });
+});
+
+test("POST /locations/:id/move-impact rejects cyclical move previews", async () => {
+  const house = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(house.status, 201);
+  const houseId = (house.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: houseId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const shelf = await request("/locations", {
+    method: "POST",
+    body: { name: "Shelf", code: "S1", type: "shelf", parent_id: garageId },
+  });
+  assert.equal(shelf.status, 201);
+  const shelfId = (shelf.json as { id: string }).id;
+
+  const impact = await request(`/locations/${houseId}/move-impact`, {
+    method: "POST",
+    body: { parent_id: shelfId },
+  });
+  assert.equal(impact.status, 400);
+  assert.deepEqual(impact.json, { error: "Invalid move: would create a cycle" });
+});
+
 test("Invalid UUID validation paths return 400", async () => {
   const invalidLocationPath = await request("/locations/not-a-uuid/path");
   assert.equal(invalidLocationPath.status, 400);
@@ -1313,7 +1439,8 @@ test("Household owners can list invites, update roles, and remove members", asyn
 
   const ownerHouseholds = await request("/households", { token: ownerToken });
   assert.equal(ownerHouseholds.status, 200);
-  const householdId = (ownerHouseholds.json as { households: Array<{ id: string }> }).households[0].id;
+  const householdId = (ownerHouseholds.json as { households: Array<{ id: string }> }).households[0]
+    .id;
   const sharedHeader = { "x-household-id": householdId };
 
   const memberInvite = await request(`/households/${householdId}/invitations`, {
@@ -1336,8 +1463,12 @@ test("Household owners can list invites, update roles, and remove members", asyn
   });
   assert.equal(ownerInvites.status, 200);
   const ownerInvitesJson = ownerInvites.json as { invitations: Array<{ email: string }> };
-  assert.ok(ownerInvitesJson.invitations.some((invite) => invite.email === "manage-member@example.com"));
-  assert.ok(ownerInvitesJson.invitations.some((invite) => invite.email === "pending-only@example.com"));
+  assert.ok(
+    ownerInvitesJson.invitations.some((invite) => invite.email === "manage-member@example.com")
+  );
+  assert.ok(
+    ownerInvitesJson.invitations.some((invite) => invite.email === "pending-only@example.com")
+  );
 
   const accepted = await request("/households/invitations/accept", {
     method: "POST",

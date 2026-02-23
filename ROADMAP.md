@@ -121,7 +121,7 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 
 ### Phase 6 — Container Movement Optimization
 - [ ] Location move confirmation UX and bulk impact visibility
-- [ ] Optional move preview (before/after path for affected items)
+- [x] Optional move preview (before/after path for affected items)
 
 ### Phase 6.5 — Multi-User Accounts + Inventory Ownership
 - [x] Add `users` table and account registration/login flow

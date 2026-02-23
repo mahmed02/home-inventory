@@ -27,10 +27,7 @@ function normalizeEmail(value: string | null): string | null {
   return EMAIL_REGEX.test(normalized) ? normalized : null;
 }
 
-function normalizeRole(
-  value: unknown,
-  defaultRole = "viewer"
-): HouseholdRole | null {
+function normalizeRole(value: unknown, defaultRole = "viewer"): HouseholdRole | null {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : defaultRole;
   if (!HOUSEHOLD_ROLES.has(normalized)) {
     return null;
