@@ -220,14 +220,14 @@ Status: `done`
 ## Phase 8 — Natural Language Interface
 
 ## 8-01) Intent + Query Orchestrator
-Status: `todo`
+Status: `done`
 - Scope:
   - Add intent parsing for common inventory questions and actions.
 - Acceptance:
   - Parsed intents map reliably to retrieval functions for target prompts.
 
 ## 8-02) Conversational Response Composer
-Status: `todo`
+Status: `done`
 - Depends on: `8-01`, `7-03`
 - Scope:
   - Build response formatter using retrieval results and location paths.
@@ -235,7 +235,7 @@ Status: `todo`
   - Responses include item, location, and confidence/fallback messaging.
 
 ## 8-03) Chat UI Surface
-Status: `todo`
+Status: `done`
 - Depends on: `8-02`
 - Scope:
   - Add chat input/history panel in web UI.
@@ -243,7 +243,7 @@ Status: `todo`
   - User can submit follow-up queries in one session.
 
 ## 8-04) Safety + Logging Guardrails
-Status: `todo`
+Status: `done`
 - Depends on: `8-02`
 - Scope:
   - Add prompt/response logging, rate limits, and unsafe-action guardrails.

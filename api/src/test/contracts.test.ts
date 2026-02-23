@@ -795,11 +795,151 @@ test("GET /api/items/lookup returns Siri response shape", async () => {
     item: string | null;
     location_path: string | null;
     notes: string;
+    answer: string;
+    confidence: number;
+    fallback: boolean;
+    intent: string;
   };
 
   assert.equal(payload.item, "Ryobi Air Compressor");
   assert.match(payload.location_path ?? "", /^House > Garage$/);
   assert.equal(typeof payload.notes, "string");
+  assert.equal(payload.intent, "find_item");
+  assert.equal(typeof payload.answer, "string");
+  assert.equal(payload.fallback, false);
+  assert.ok(payload.confidence >= 0 && payload.confidence <= 1);
+});
+
+test("GET /api/items/lookup maps list-location intent and returns location summary", async () => {
+  const root = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: rootId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const garageShelf = await request("/locations", {
+    method: "POST",
+    body: { name: "Shelf A", code: "S1", type: "shelf", parent_id: garageId },
+  });
+  assert.equal(garageShelf.status, 201);
+  const garageShelfId = (garageShelf.json as { id: string }).id;
+
+  const directItem = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Shop Vacuum",
+      keywords: ["vacuum"],
+      location_id: garageId,
+    },
+  });
+  assert.equal(directItem.status, 201);
+
+  const nestedItem = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Nail Gun",
+      keywords: ["nailer"],
+      location_id: garageShelfId,
+    },
+  });
+  assert.equal(nestedItem.status, 201);
+
+  const lookup = await request("/api/items/lookup?q=what%20is%20in%20the%20garage");
+  assert.equal(lookup.status, 200);
+
+  const payload = lookup.json as {
+    intent: string;
+    fallback: boolean;
+    location_path: string | null;
+    match_count: number;
+    answer: string;
+    item: string | null;
+  };
+
+  assert.equal(payload.intent, "list_location");
+  assert.equal(payload.fallback, false);
+  assert.match(payload.location_path ?? "", /^House > Garage$/);
+  assert.equal(payload.match_count, 2);
+  assert.equal(payload.item, "Nail Gun");
+  assert.match(payload.answer, /I found 2 item\(s\) in House > Garage/i);
+});
+
+test("GET /api/items/lookup maps count intent and returns count summary", async () => {
+  const root = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: rootId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  for (const itemName of ["Drill Driver", "Drill Bits", "Cordless Light"]) {
+    const created = await request("/items", {
+      method: "POST",
+      body: {
+        name: itemName,
+        keywords: itemName.toLowerCase().includes("drill") ? ["drill"] : ["light"],
+        location_id: garageId,
+      },
+    });
+    assert.equal(created.status, 201);
+  }
+
+  const lookup = await request("/api/items/lookup?q=how%20many%20drill%20do%20i%20have");
+  assert.equal(lookup.status, 200);
+
+  const payload = lookup.json as {
+    intent: string;
+    fallback: boolean;
+    match_count: number;
+    answer: string;
+    item: string | null;
+    confidence: number;
+  };
+
+  assert.equal(payload.intent, "count_items");
+  assert.equal(payload.fallback, false);
+  assert.equal(payload.match_count, 2);
+  assert.equal(payload.item, "Drill Bits");
+  assert.match(payload.answer, /I found 2 item\(s\) matching "drill"/i);
+  assert.ok(payload.confidence >= 0 && payload.confidence <= 1);
+});
+
+test("GET /api/items/lookup handles unsupported action requests safely", async () => {
+  const lookup = await request("/api/items/lookup?q=move%20the%20drill%20to%20attic");
+  assert.equal(lookup.status, 200);
+
+  const payload = lookup.json as {
+    intent: string;
+    fallback: boolean;
+    answer: string;
+    item: string | null;
+    location_path: string | null;
+    notes: string;
+    requires_confirmation: boolean;
+  };
+
+  assert.equal(payload.intent, "unsupported_action");
+  assert.equal(payload.fallback, true);
+  assert.equal(payload.item, null);
+  assert.equal(payload.location_path, null);
+  assert.equal(payload.requires_confirmation, true);
+  assert.match(payload.answer, /can't make inventory changes from Siri yet/i);
+  assert.match(payload.notes, /Unsupported action request/i);
 });
 
 test("POST /uploads/presign validates request and reports missing config", async () => {

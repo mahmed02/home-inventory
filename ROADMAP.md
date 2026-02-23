@@ -148,8 +148,8 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - [x] Relevance regression checks in CI
 
 ### Phase 8 — Natural Language Interface
-- [ ] Chat-style query input
-- [ ] Retrieval + response formatting for conversational lookup
+- [x] Chat-style query input
+- [x] Retrieval + response formatting for conversational lookup
 
 ### Phase 9 — Movement History
 - [ ] `movement_history` table

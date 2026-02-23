@@ -10,9 +10,15 @@ This guide configures a simple Siri Shortcut that asks for an item name, calls y
 
 ```json
 {
+  "query": "where is compressor",
+  "intent": "find_item",
+  "confidence": 0.91,
+  "fallback": false,
+  "answer": "Ryobi Air Compressor is in House > Garage > Shelf 2.",
   "item": "Ryobi Air Compressor",
   "location_path": "House > Garage > Shelf 2",
-  "notes": "Green, under tarp"
+  "notes": "Green, under tarp",
+  "requires_confirmation": false
 }
 ```
 
@@ -55,6 +61,10 @@ This handles both match and no-match responses.
 3. Record phrase, e.g. `Where is my item?`
 
 Usage: say the phrase, Siri asks for item, API answer is spoken.
+Natural prompts also work, for example:
+- `Where is my compressor?`
+- `What is in the garage?`
+- `How many drill bits do I have?`
 
 ## 4) Share With Family
 

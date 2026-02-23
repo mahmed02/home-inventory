@@ -2,6 +2,10 @@ const queryInput = document.getElementById("query");
 const searchModeSelect = document.getElementById("searchMode");
 const searchBtn = document.getElementById("searchBtn");
 const resultsEl = document.getElementById("results");
+const chatQueryInput = document.getElementById("chatQuery");
+const chatAskBtn = document.getElementById("chatAskBtn");
+const chatClearBtn = document.getElementById("chatClearBtn");
+const chatHistoryEl = document.getElementById("chatHistory");
 const statusEl = document.getElementById("status");
 const metaEl = document.getElementById("meta");
 const authStateHintEl = document.getElementById("authStateHint");
@@ -124,6 +128,8 @@ let activeHouseholdId = "";
 let activeHouseholdRole = "";
 let refreshingHouseholds = false;
 let pendingLocationMove = null;
+let chatHistory = [];
+const MAX_CHAT_HISTORY = 20;
 
 const AUTH_TOKEN_STORAGE_KEY = "home_inventory_auth_token";
 const AUTH_USER_STORAGE_KEY = "home_inventory_auth_user";
@@ -490,6 +496,37 @@ function formatScore(value) {
     return null;
   }
   return value.toFixed(3);
+}
+
+function renderChatHistory() {
+  if (!chatHistoryEl) {
+    return;
+  }
+
+  if (!chatHistory.length) {
+    chatHistoryEl.innerHTML = '<li class="management-empty">Ask about an item or location to start.</li>';
+    return;
+  }
+
+  chatHistoryEl.innerHTML = chatHistory
+    .map(
+      (entry) => `
+        <li class="chat-entry ${entry.role}">
+          <div class="chat-role">${escapeHtml(entry.role)}</div>
+          <div class="chat-text">${escapeHtml(entry.text)}</div>
+          ${entry.meta ? `<div class="chat-meta">${escapeHtml(entry.meta)}</div>` : ""}
+        </li>
+      `
+    )
+    .join("");
+}
+
+function pushChatEntry(role, text, meta = "") {
+  chatHistory.push({ role, text, meta });
+  if (chatHistory.length > MAX_CHAT_HISTORY) {
+    chatHistory = chatHistory.slice(chatHistory.length - MAX_CHAT_HISTORY);
+  }
+  renderChatHistory();
 }
 
 function updateActionState() {
@@ -1061,6 +1098,41 @@ async function search() {
     );
     setStatus(`Done (${responseMode}).`);
   } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function askAssistant() {
+  const q = chatQueryInput ? chatQueryInput.value.trim() : "";
+  if (!q) {
+    setStatus("Enter a question for the assistant.");
+    return;
+  }
+
+  pushChatEntry("user", q);
+  if (chatQueryInput) {
+    chatQueryInput.value = "";
+  }
+
+  setStatus("Asking assistant...");
+  try {
+    const payload = await fetchJson(`/api/items/lookup?q=${encodeURIComponent(q)}`);
+    const answer =
+      payload && typeof payload.answer === "string"
+        ? payload.answer
+        : payload && typeof payload.notes === "string"
+          ? payload.notes
+          : "I could not generate a response.";
+    const intent = payload && typeof payload.intent === "string" ? payload.intent : "unknown";
+    const confidence =
+      payload && typeof payload.confidence === "number" ? payload.confidence.toFixed(2) : "n/a";
+    const fallback =
+      payload && typeof payload.fallback === "boolean" ? String(payload.fallback) : "false";
+
+    pushChatEntry("assistant", answer, `intent=${intent} confidence=${confidence} fallback=${fallback}`);
+    setStatus("Assistant response ready.");
+  } catch (error) {
+    pushChatEntry("assistant", error.message, "intent=error");
     setStatus(error.message);
   }
 }
@@ -1802,6 +1874,29 @@ queryInput.addEventListener("keydown", (event) => {
   }
 });
 
+if (chatAskBtn) {
+  chatAskBtn.addEventListener("click", () => {
+    void askAssistant();
+  });
+}
+
+if (chatClearBtn) {
+  chatClearBtn.addEventListener("click", () => {
+    chatHistory = [];
+    renderChatHistory();
+    setStatus("Assistant history cleared.");
+  });
+}
+
+if (chatQueryInput) {
+  chatQueryInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void askAssistant();
+    }
+  });
+}
+
 if (searchModeSelect) {
   searchModeSelect.addEventListener("change", () => {
     const mode = setSearchMode(searchModeSelect.value);
@@ -1815,6 +1910,7 @@ if (searchModeSelect) {
 
 window.addEventListener("load", async () => {
   try {
+    renderChatHistory();
     restoreSearchMode();
     restoreAuthSessionFromStorage();
     await hydrateSessionUser();

@@ -122,6 +122,7 @@ For the full step-by-step runbook, use:
 - Open [http://localhost:4000](http://localhost:4000)
 - Features:
   - Search items by keyword, hybrid mode, or semantic mode
+  - Ask inventory questions in natural language with chat history (same browser session)
   - View location path
   - Move item to a new location
   - Create locations and items
@@ -167,6 +168,8 @@ For the full step-by-step runbook, use:
 - Siri endpoints remain raw for Shortcut compatibility:
   - `GET /api/items/lookup?q=`
   - `GET /shortcut/find-item?q=`
+- Lookup response now includes intent metadata for conversational clients:
+  - `intent`, `answer`, `confidence`, `fallback`, `requires_confirmation`
 
 ## S3 Image Uploads (Presigned URL)
 

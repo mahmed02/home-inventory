@@ -379,6 +379,48 @@ button.danger {
   font-family: Menlo, Monaco, monospace;
 }
 
+.chat-history {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.chat-entry {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fcfdfc;
+}
+
+.chat-entry.user {
+  border-left: 4px solid #87b7a2;
+}
+
+.chat-entry.assistant {
+  border-left: 4px solid var(--accent);
+}
+
+.chat-role {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chat-text {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.chat-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: Menlo, Monaco, monospace;
+}
+
 .move-row {
   margin-top: 10px;
   display: flex;

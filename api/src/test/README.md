@@ -7,6 +7,7 @@ These tests validate MVP API behavior:
 - Search pagination and location paths
 - Semantic search mode ranking + relevance regression set
 - Siri lookup response shape
+- Natural-language intent mapping (find/list/count + guarded action fallback)
 
 ## Test DB Safety
 
