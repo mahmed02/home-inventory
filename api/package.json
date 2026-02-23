@@ -17,7 +17,8 @@
     "lint:fix": "eslint \"src/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
-    "test": "tsx --test src/test/*.test.ts"
+    "test": "tsx --test src/test/*.test.ts",
+    "embeddings:reindex": "tsx src/scripts/reindexEmbeddings.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.994.0",

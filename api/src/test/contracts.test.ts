@@ -742,6 +742,108 @@ test("PATCH/DELETE item flow works end-to-end", async () => {
   assert.equal(afterDelete.status, 404);
 });
 
+test("Embeddings reindex is resumable and idempotent", async () => {
+  const { reindexItemEmbeddings } = await import("../search/reindexItemEmbeddings");
+
+  const root = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: rootId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  await pool.query(
+    `
+    INSERT INTO items(name, description, keywords, location_id, image_url)
+    VALUES
+      ($1, $2, $3::text[], $4, $5),
+      ($6, $7, $8::text[], $9, $10),
+      ($11, $12, $13::text[], $14, $15)
+    `,
+    [
+      "Cordless Drill",
+      "18v drill",
+      ["tool", "drill"],
+      garageId,
+      null,
+      "Circular Saw",
+      "Compact saw",
+      ["tool", "saw"],
+      garageId,
+      null,
+      "Ratchet Set",
+      "Mechanic ratchet",
+      ["tool", "ratchet"],
+      garageId,
+      null,
+    ]
+  );
+
+  const beforeReindex = await pool.query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM item_embeddings"
+  );
+  assert.equal(Number(beforeReindex.rows[0].count), 0);
+
+  const firstPass = await reindexItemEmbeddings({
+    mode: "missing",
+    batchSize: 2,
+    maxBatches: 1,
+  });
+  assert.equal(firstPass.completed, false);
+  assert.equal(firstPass.batches, 1);
+  assert.equal(firstPass.totalProcessed, 2);
+  assert.ok(firstPass.lastItemId);
+
+  const afterFirstPass = await pool.query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM item_embeddings"
+  );
+  assert.equal(Number(afterFirstPass.rows[0].count), 2);
+
+  const resumePass = await reindexItemEmbeddings({
+    mode: "missing",
+    batchSize: 2,
+    afterId: firstPass.lastItemId,
+  });
+  assert.equal(resumePass.completed, true);
+  assert.equal(resumePass.totalProcessed, 1);
+
+  const afterResume = await pool.query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM item_embeddings"
+  );
+  assert.equal(Number(afterResume.rows[0].count), 3);
+
+  const idempotentMissingPass = await reindexItemEmbeddings({
+    mode: "missing",
+    batchSize: 2,
+  });
+  assert.equal(idempotentMissingPass.completed, true);
+  assert.equal(idempotentMissingPass.totalProcessed, 0);
+
+  const afterIdempotentMissing = await pool.query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM item_embeddings"
+  );
+  assert.equal(Number(afterIdempotentMissing.rows[0].count), 3);
+
+  const fullReindex = await reindexItemEmbeddings({
+    mode: "all",
+    batchSize: 2,
+  });
+  assert.equal(fullReindex.completed, true);
+  assert.equal(fullReindex.totalProcessed, 3);
+
+  const afterFullReindex = await pool.query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM item_embeddings"
+  );
+  assert.equal(Number(afterFullReindex.rows[0].count), 3);
+});
+
 test("DELETE /locations enforces child/item guard", async () => {
   const house = await request("/locations", {
     method: "POST",

@@ -190,7 +190,7 @@ Status: `done`
   - Embedding vectors persist on create/update path.
 
 ## 7-02) Backfill + Reindex Job
-Status: `todo`
+Status: `done`
 - Depends on: `7-01`
 - Scope:
   - Add batch job to generate embeddings for existing inventory.

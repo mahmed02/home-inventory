@@ -133,6 +133,11 @@ For the full step-by-step runbook, use:
 
 - Reset inventory data: `npm --prefix ./api run db:reset`
 - Seed demo inventory data: `npm --prefix ./api run db:seed`
+- Backfill missing embeddings for existing items: `npm --prefix ./api run embeddings:reindex`
+- Full embedding reindex for all items: `npm --prefix ./api run embeddings:reindex -- --mode=all`
+- Chunked/resumable runs:
+  - Stop after 10 batches: `npm --prefix ./api run embeddings:reindex -- --max-batches=10`
+  - Resume from cursor: `npm --prefix ./api run embeddings:reindex -- --after-id=<last_item_id>`
 
 ## Backup / Restore
 
@@ -216,6 +221,8 @@ Notes:
 - `0005_drop_items_brand_low_churn.sql`
 - `0006_add_user_accounts_and_ownership.sql`
 - `0007_add_password_reset_tokens.sql`
+- `0008_add_households_and_sharing.sql`
+- `0009_add_item_embeddings.sql`
 
 ## Notes
 

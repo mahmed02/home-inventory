@@ -142,6 +142,7 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 ### Phase 7 — Semantic Search
 - [x] Add embeddings column/store
 - [x] Generate embeddings on create/update
+- [x] Resumable backfill/reindex job for existing items
 - [ ] Similarity query + ranking
 
 ### Phase 8 — Natural Language Interface
