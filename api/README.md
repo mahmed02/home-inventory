@@ -121,7 +121,7 @@ For the full step-by-step runbook, use:
 
 - Open [http://localhost:4000](http://localhost:4000)
 - Features:
-  - Search items by keyword
+  - Search items by keyword, hybrid mode, or semantic mode
   - View location path
   - Move item to a new location
   - Create locations and items

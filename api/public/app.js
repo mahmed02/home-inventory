@@ -1,4 +1,5 @@
 const queryInput = document.getElementById("query");
+const searchModeSelect = document.getElementById("searchMode");
 const searchBtn = document.getElementById("searchBtn");
 const resultsEl = document.getElementById("results");
 const statusEl = document.getElementById("status");
@@ -127,6 +128,7 @@ let pendingLocationMove = null;
 const AUTH_TOKEN_STORAGE_KEY = "home_inventory_auth_token";
 const AUTH_USER_STORAGE_KEY = "home_inventory_auth_user";
 const ACTIVE_HOUSEHOLD_STORAGE_KEY = "home_inventory_active_household_id";
+const SEARCH_MODE_STORAGE_KEY = "home_inventory_search_mode";
 const allModals = [
   createActionsModal,
   createLocationModal,
@@ -463,6 +465,31 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replaceAll("`", "&#96;");
+}
+
+function normalizeSearchMode(value) {
+  return value === "hybrid" || value === "semantic" || value === "lexical" ? value : "lexical";
+}
+
+function setSearchMode(mode) {
+  const normalized = normalizeSearchMode(mode);
+  if (searchModeSelect) {
+    searchModeSelect.value = normalized;
+  }
+  localStorage.setItem(SEARCH_MODE_STORAGE_KEY, normalized);
+  return normalized;
+}
+
+function restoreSearchMode() {
+  const stored = localStorage.getItem(SEARCH_MODE_STORAGE_KEY);
+  return setSearchMode(stored || (searchModeSelect ? searchModeSelect.value : "lexical"));
+}
+
+function formatScore(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return value.toFixed(3);
 }
 
 function updateActionState() {
@@ -957,14 +984,14 @@ async function loadLocationTreeForForms() {
   syncLocationSelectors();
 }
 
-function renderResults(results, total, limit, offset) {
+function renderResults(results, total, limit, offset, mode = "lexical") {
   if (!results.length) {
     resultsEl.innerHTML = '<li class="result">No results</li>';
-    metaEl.textContent = "total: 0";
+    metaEl.textContent = `mode: ${mode}, total: 0`;
     return;
   }
 
-  metaEl.textContent = `total: ${total}, showing ${results.length}, offset ${offset}, limit ${limit}`;
+  metaEl.textContent = `mode: ${mode}, total: ${total}, showing ${results.length}, offset ${offset}, limit ${limit}`;
 
   const options = flatLocations
     .map(
@@ -985,6 +1012,11 @@ function renderResults(results, total, limit, offset) {
             <div>
               <div class="result-title">${escapeHtml(item.name)}</div>
               <div class="result-path">${escapeHtml(item.location_path)}</div>
+              ${
+                formatScore(item.score)
+                  ? `<div class="result-scores">score ${formatScore(item.score)} | lexical ${formatScore(item.lexical_score) || "0.000"} | semantic ${formatScore(item.semantic_score) || "0.000"}</div>`
+                  : ""
+              }
             </div>
           </div>
           <div class="move-row">
@@ -1007,13 +1039,27 @@ async function search() {
     return;
   }
 
+  const mode = setSearchMode(searchModeSelect ? searchModeSelect.value : "lexical");
   setStatus("Searching...");
 
   try {
     await loadLocationTreeForForms();
-    const data = await fetchJson(`/items/search?q=${encodeURIComponent(q)}&limit=20&offset=0`);
-    renderResults(data.results || [], data.total || 0, data.limit || 20, data.offset || 0);
-    setStatus("Done.");
+    const endpoint =
+      mode === "lexical"
+        ? `/items/search?q=${encodeURIComponent(q)}&limit=20&offset=0`
+        : `/items/search/semantic?q=${encodeURIComponent(q)}&mode=${encodeURIComponent(mode)}&limit=20&offset=0`;
+
+    const data = await fetchJson(endpoint);
+    const responseMode = normalizeSearchMode(data && data.mode ? data.mode : mode);
+    const results = data && Array.isArray(data.results) ? data.results : [];
+    renderResults(
+      results,
+      data && typeof data.total === "number" ? data.total : 0,
+      data && typeof data.limit === "number" ? data.limit : 20,
+      data && typeof data.offset === "number" ? data.offset : 0,
+      responseMode
+    );
+    setStatus(`Done (${responseMode}).`);
   } catch (error) {
     setStatus(error.message);
   }
@@ -1756,8 +1802,20 @@ queryInput.addEventListener("keydown", (event) => {
   }
 });
 
+if (searchModeSelect) {
+  searchModeSelect.addEventListener("change", () => {
+    const mode = setSearchMode(searchModeSelect.value);
+    if (queryInput.value.trim()) {
+      void search();
+      return;
+    }
+    setStatus(`Search mode set to ${mode}.`);
+  });
+}
+
 window.addEventListener("load", async () => {
   try {
+    restoreSearchMode();
     restoreAuthSessionFromStorage();
     await hydrateSessionUser();
     await refreshHouseholds();

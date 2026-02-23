@@ -117,8 +117,14 @@
         <h2>Search</h2>
         <div class="search-row">
           <input id="query" type="text" placeholder="air compressor" />
+          <select id="searchMode" title="Search mode">
+            <option value="lexical">Lexical</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="semantic">Semantic</option>
+          </select>
           <button id="searchBtn">Search</button>
         </div>
+        <p class="hint">Switch between exact keyword matching, semantic similarity, or blended ranking.</p>
       </section>
 
       <section class="panel">

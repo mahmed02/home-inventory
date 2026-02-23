@@ -144,6 +144,8 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - [x] Generate embeddings on create/update
 - [x] Resumable backfill/reindex job for existing items
 - [x] Similarity query + ranking
+- [x] Search UX toggle for lexical/hybrid/semantic modes
+- [x] Relevance regression checks in CI
 
 ### Phase 8 — Natural Language Interface
 - [ ] Chat-style query input

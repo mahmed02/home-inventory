@@ -207,7 +207,7 @@ Status: `done`
   - Endpoint returns ranked results with stable pagination behavior.
 
 ## 7-04) Search UX + Relevance Checks
-Status: `todo`
+Status: `done`
 - Depends on: `7-03`
 - Scope:
   - Add UI toggle/filter for semantic search mode.

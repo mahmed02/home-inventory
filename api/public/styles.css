@@ -92,6 +92,14 @@ label {
   gap: 8px;
 }
 
+.search-row input {
+  flex: 1;
+}
+
+.search-row select {
+  min-width: 132px;
+}
+
 input,
 select,
 button {
@@ -362,6 +370,13 @@ button.danger {
   margin-top: 4px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.result-scores {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: Menlo, Monaco, monospace;
 }
 
 .move-row {

@@ -677,6 +677,93 @@ test("GET /items/search/semantic returns ranked results with stable pagination",
   assert.ok(!page1Ids.has(page2Json.results[0].id));
 });
 
+test("Semantic relevance regression set remains stable", async () => {
+  const root = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const workshop = await request("/locations", {
+    method: "POST",
+    body: { name: "Workshop", code: "W1", type: "room", parent_id: rootId },
+  });
+  assert.equal(workshop.status, 201);
+  const workshopId = (workshop.json as { id: string }).id;
+
+  const fixtures = [
+    {
+      name: "Pneumatic Tank Compressor",
+      description: "Garage air tool with pressure gauge",
+      keywords: ["pneumatic", "tank", "compressor"],
+    },
+    {
+      name: "Portable Tire Inflator",
+      description: "Compact inflator for car tires",
+      keywords: ["inflator", "air", "tire"],
+    },
+    {
+      name: "Concrete Anchor Drill",
+      description: "Hammer drill and masonry anchor kit",
+      keywords: ["drill", "concrete", "anchor"],
+    },
+    {
+      name: "Holiday Storage Bin",
+      description: "Seasonal decorations organizer",
+      keywords: ["storage", "bin", "seasonal"],
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    const created = await request("/items", {
+      method: "POST",
+      body: {
+        name: fixture.name,
+        description: fixture.description,
+        keywords: fixture.keywords,
+        location_id: workshopId,
+      },
+    });
+    assert.equal(created.status, 201);
+  }
+
+  const cases = [
+    { query: "compressor", mode: "lexical", expectedTop: "Pneumatic Tank Compressor" },
+    { query: "pneumatic tank", mode: "semantic", expectedTop: "Pneumatic Tank Compressor" },
+    { query: "masonry anchor drill", mode: "hybrid", expectedTop: "Concrete Anchor Drill" },
+    { query: "seasonal storage", mode: "hybrid", expectedTop: "Holiday Storage Bin" },
+  ];
+
+  for (const testCase of cases) {
+    const first = await request(
+      `/items/search/semantic?q=${encodeURIComponent(testCase.query)}&mode=${encodeURIComponent(testCase.mode)}&limit=4&offset=0`
+    );
+    assert.equal(first.status, 200);
+    const firstJson = first.json as {
+      mode: string;
+      results: Array<{ id: string; name: string }>;
+    };
+
+    assert.equal(firstJson.mode, testCase.mode);
+    assert.ok(firstJson.results.length > 0);
+    assert.equal(firstJson.results[0].name, testCase.expectedTop);
+
+    const second = await request(
+      `/items/search/semantic?q=${encodeURIComponent(testCase.query)}&mode=${encodeURIComponent(testCase.mode)}&limit=4&offset=0`
+    );
+    assert.equal(second.status, 200);
+    const secondJson = second.json as {
+      results: Array<{ id: string }>;
+    };
+
+    assert.deepEqual(
+      secondJson.results.map((entry) => entry.id),
+      firstJson.results.map((entry) => entry.id)
+    );
+  }
+});
+
 test("GET /api/items/lookup returns Siri response shape", async () => {
   const root = await request("/locations", {
     method: "POST",

@@ -5,6 +5,7 @@ These tests validate MVP API behavior:
 - Unique location code conflicts
 - Cycle prevention on location moves
 - Search pagination and location paths
+- Semantic search mode ranking + relevance regression set
 - Siri lookup response shape
 
 ## Test DB Safety
