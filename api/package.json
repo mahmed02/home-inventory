@@ -11,6 +11,7 @@
     "migrate": "tsx src/db/migrate.ts",
     "db:reset": "tsx src/scripts/reset.ts",
     "db:seed": "tsx src/scripts/seed.ts",
+    "bootstrap:owner": "tsx src/scripts/bootstrapOwner.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fix": "eslint \"src/**/*.ts\" --fix",

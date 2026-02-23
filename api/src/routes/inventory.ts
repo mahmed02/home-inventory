@@ -3,6 +3,7 @@ import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
 import { ItemRow, LocationRow } from "../types";
+import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
 
 type InventoryNode = LocationRow & {
   children: InventoryNode[];
@@ -21,11 +22,19 @@ type InventoryNode = LocationRow & {
 
 const inventoryRouter = Router();
 
-inventoryRouter.get("/inventory/tree", async (_req, res) => {
+inventoryRouter.get("/inventory/tree", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
+
   try {
     const [locationResult, itemResult] = await Promise.all([
-      pool.query<LocationRow>("SELECT * FROM locations ORDER BY name ASC"),
-      pool.query<ItemRow>("SELECT * FROM items ORDER BY name ASC"),
+      pool.query<LocationRow>(
+        `SELECT * FROM locations WHERE ${ownerScopeSql("owner_user_id", 1)} ORDER BY name ASC`,
+        [ownerUserId]
+      ),
+      pool.query<ItemRow>(
+        `SELECT * FROM items WHERE ${ownerScopeSql("owner_user_id", 1)} ORDER BY name ASC`,
+        [ownerUserId]
+      ),
     ]);
 
     const nodesById = new Map<string, InventoryNode>();

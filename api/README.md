@@ -52,6 +52,8 @@ Default DB URL expected by `.env.example`:
 | `REQUIRE_AUTH` | `false` | `true` | `true` | yes |
 | `BASIC_AUTH_USER` | optional | required when `REQUIRE_AUTH=true` | required when `REQUIRE_AUTH=true` | conditional |
 | `BASIC_AUTH_PASS` | optional | required when `REQUIRE_AUTH=true` | required when `REQUIRE_AUTH=true` | conditional |
+| `REQUIRE_USER_ACCOUNTS` | `false` | `false` or `true` | `true` (recommended) | optional |
+| `SESSION_TTL_HOURS` | `720` | `720` | `720` | optional |
 | `CORS_ALLOW_ORIGINS` | empty (same-origin only) | comma-separated allowlist | comma-separated allowlist | optional |
 | `APP_BASE_URL` | `http://localhost:4000` | public HTTPS staging URL | public HTTPS prod URL | yes |
 | `AWS_REGION` | `us-east-1` | deployment region | deployment region | yes |
@@ -62,6 +64,8 @@ Default DB URL expected by `.env.example`:
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are only required when you are not using IAM role credentials on compute.
 
 When `REQUIRE_AUTH=true`, all endpoints except `/health` require HTTP Basic auth.
+When `REQUIRE_USER_ACCOUNTS=true`, all endpoints except `/health` and `/auth/*` require a bearer session token.
+Do not set both to `true` in-app at the same time (both rely on the `Authorization` header).
 
 ## AWS Deploy Checklist (MVP)
 
@@ -86,6 +90,12 @@ For the full step-by-step runbook, use:
 ## Endpoints (Current)
 
 - `GET /health`
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/forgot-password`
+- `POST /auth/reset-password`
+- `POST /auth/logout`
+- `GET /auth/me`
 - `POST /locations`
 - `GET /locations/tree`
 - `GET /locations/:id/path`
@@ -204,9 +214,27 @@ Notes:
 - `0003_create_items.sql`
 - `0004_add_updated_at_triggers.sql`
 - `0005_drop_items_brand_low_churn.sql`
+- `0006_add_user_accounts_and_ownership.sql`
+- `0007_add_password_reset_tokens.sql`
 
 ## Notes
 
-- `locations.code` is globally unique when non-null.
+- `locations.code` is unique per owner account; legacy unowned records keep global uniqueness.
 - `keywords` is `text[]`.
 - `updated_at` is automatically refreshed on updates.
+- Inventory routes are owner-scoped when a valid bearer user session is present.
+
+## Legacy Owner Bootstrap (One-Time Migration)
+
+Use this when existing inventory rows are still unowned (`owner_user_id IS NULL`) and you want to
+assign them to an initial account before enforcing user-auth-only mode.
+
+```bash
+BOOTSTRAP_OWNER_EMAIL=owner@example.com \
+BOOTSTRAP_OWNER_PASSWORD='ChangeThisNow123!' \
+BOOTSTRAP_OWNER_DISPLAY_NAME='Primary Owner' \
+npm --prefix ./api run bootstrap:owner
+```
+
+Optional:
+- `BOOTSTRAP_OWNER_UPDATE_PASSWORD=true` to rotate password if the owner account already exists.

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { PoolClient } from "pg";
 import { pool } from "../db/pool";
+import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
 import { createInMemoryRateLimit } from "../middleware/rateLimit";
 import { sendConflict, sendInternalError, sendValidationError } from "../middleware/http";
 import { ItemRow, LocationRow } from "../types";
@@ -90,18 +91,21 @@ function topoSortLocations(rows: LocationRow[]): LocationRow[] | null {
 async function insertImportData(
   client: PoolClient,
   locations: LocationRow[],
-  items: ItemRow[]
+  items: ItemRow[],
+  ownerUserId: string | null
 ): Promise<void> {
-  await client.query("DELETE FROM items");
-  await client.query("DELETE FROM locations");
+  await client.query(`DELETE FROM items WHERE ${ownerScopeSql("owner_user_id", 1)}`, [ownerUserId]);
+  await client.query(`DELETE FROM locations WHERE ${ownerScopeSql("owner_user_id", 1)}`, [
+    ownerUserId,
+  ]);
 
   for (const row of locations) {
     await client.query(
       `
       INSERT INTO locations(
-        id, name, code, type, parent_id, description, image_url, created_at, updated_at
+        id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       `,
       [
         row.id,
@@ -113,6 +117,7 @@ async function insertImportData(
         row.image_url,
         row.created_at,
         row.updated_at,
+        ownerUserId,
       ]
     );
   }
@@ -121,9 +126,9 @@ async function insertImportData(
     await client.query(
       `
       INSERT INTO items(
-        id, name, description, keywords, location_id, image_url, created_at, updated_at
+        id, name, description, keywords, location_id, image_url, created_at, updated_at, owner_user_id
       )
-      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8)
+      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8,$9)
       `,
       [
         row.id,
@@ -134,6 +139,7 @@ async function insertImportData(
         row.image_url,
         row.created_at,
         row.updated_at,
+        ownerUserId,
       ]
     );
   }
@@ -142,15 +148,16 @@ async function insertImportData(
 async function mergeImportData(
   client: PoolClient,
   locations: LocationRow[],
-  items: ItemRow[]
+  items: ItemRow[],
+  ownerUserId: string | null
 ): Promise<void> {
   for (const row of locations) {
     await client.query(
       `
       INSERT INTO locations(
-        id, name, code, type, parent_id, description, image_url, created_at, updated_at
+        id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       `,
       [
         row.id,
@@ -162,6 +169,7 @@ async function mergeImportData(
         row.image_url,
         row.created_at,
         row.updated_at,
+        ownerUserId,
       ]
     );
   }
@@ -170,9 +178,9 @@ async function mergeImportData(
     await client.query(
       `
       INSERT INTO items(
-        id, name, description, keywords, location_id, image_url, created_at, updated_at
+        id, name, description, keywords, location_id, image_url, created_at, updated_at, owner_user_id
       )
-      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8)
+      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8,$9)
       `,
       [
         row.id,
@@ -183,6 +191,7 @@ async function mergeImportData(
         row.image_url,
         row.created_at,
         row.updated_at,
+        ownerUserId,
       ]
     );
   }
@@ -213,10 +222,12 @@ function buildUniqueCode(baseCode: string, seenCodes: Set<string>): string {
 async function remapImportPayload(
   client: PoolClient,
   locations: LocationRow[],
-  items: ItemRow[]
+  items: ItemRow[],
+  ownerUserId: string | null
 ): Promise<{ locations: LocationRow[]; items: ItemRow[] }> {
   const existingCodesResult = await client.query<{ code: string }>(
-    "SELECT code FROM locations WHERE code IS NOT NULL"
+    `SELECT code FROM locations WHERE code IS NOT NULL AND ${ownerScopeSql("owner_user_id", 1)}`,
+    [ownerUserId]
   );
   const seenCodes = new Set(existingCodesResult.rows.map((row) => row.code));
 
@@ -246,11 +257,19 @@ async function remapImportPayload(
   return { locations: remappedLocations, items: remappedItems };
 }
 
-exportRouter.get("/export/inventory", async (_req, res) => {
+exportRouter.get("/export/inventory", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
+
   try {
     const [locationsResult, itemsResult] = await Promise.all([
-      pool.query<LocationRow>("SELECT * FROM locations ORDER BY created_at ASC"),
-      pool.query<ItemRow>("SELECT * FROM items ORDER BY created_at ASC"),
+      pool.query<LocationRow>(
+        `SELECT * FROM locations WHERE ${ownerScopeSql("owner_user_id", 1)} ORDER BY created_at ASC`,
+        [ownerUserId]
+      ),
+      pool.query<ItemRow>(
+        `SELECT * FROM items WHERE ${ownerScopeSql("owner_user_id", 1)} ORDER BY created_at ASC`,
+        [ownerUserId]
+      ),
     ]);
 
     return res.status(200).json({
@@ -269,6 +288,7 @@ exportRouter.get("/export/inventory", async (_req, res) => {
 });
 
 exportRouter.post("/import/inventory", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const validateOnly = parseBooleanQuery(req.query.validate_only);
   const remapIds = parseBooleanQuery(req.query.remap_ids);
   const body = req.body as ImportPayload;
@@ -354,10 +374,10 @@ exportRouter.post("/import/inventory", async (req, res) => {
   try {
     await client.query("BEGIN");
     if (remapIds) {
-      const remapped = await remapImportPayload(client, sortedLocations, items);
-      await mergeImportData(client, remapped.locations, remapped.items);
+      const remapped = await remapImportPayload(client, sortedLocations, items, ownerUserId);
+      await mergeImportData(client, remapped.locations, remapped.items, ownerUserId);
     } else {
-      await insertImportData(client, sortedLocations, items);
+      await insertImportData(client, sortedLocations, items, ownerUserId);
     }
     await client.query("COMMIT");
 

@@ -117,17 +117,26 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 
 ## 3) Post-MVP Backlog
 
+Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICKETS.md`
+
 ### Phase 6 — Container Movement Optimization
 - [ ] Location move confirmation UX and bulk impact visibility
 - [ ] Optional move preview (before/after path for affected items)
 
 ### Phase 6.5 — Multi-User Accounts + Inventory Ownership
-- [ ] Add `users` table and account registration/login flow
-- [ ] Add authenticated session/JWT model and password reset path
-- [ ] Add ownership field to inventory entities (user or tenant scope)
-- [ ] Scope all reads/writes by authenticated owner
-- [ ] Add authorization tests to block cross-user access
-- [ ] Migrate existing single-inventory data to an initial owner
+- [x] Add `users` table and account registration/login flow
+- [x] Add authenticated session/JWT model and password reset path
+- [x] Add ownership field to inventory entities (user or tenant scope)
+- [x] Scope all reads/writes by authenticated owner
+- [x] Add authorization tests to block cross-user access
+- [x] Migrate existing single-inventory data to an initial owner
+
+### Phase 6.6 — Shared Household Access (Queued After 6.5 Completion)
+- [ ] Add `households` and `household_members` with roles (`owner`, `editor`, `viewer`)
+- [ ] Add invite + accept flow for owner-granted household access
+- [ ] Refactor inventory ownership from user-only scope to household scope
+- [ ] Enforce role-based permissions on create/update/delete endpoints
+- [ ] Add cross-household authorization tests and sharing UX
 
 ### Phase 7 — Semantic Search
 - [ ] Add embeddings column/store

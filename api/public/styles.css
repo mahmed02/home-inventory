@@ -36,6 +36,11 @@ p {
   margin: 0;
 }
 
+h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
 header {
   margin-bottom: 18px;
 }
@@ -57,6 +62,19 @@ header p {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.auth-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fcfdfc;
+  padding: 10px;
 }
 
 .stack {
@@ -368,6 +386,10 @@ button.danger {
 
 @media (max-width: 860px) {
   .two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-grid {
     grid-template-columns: 1fr;
   }
 

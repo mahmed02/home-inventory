@@ -14,6 +14,7 @@ const defaultEnvPath = path.resolve(__dirname, "../../.env");
 dotenv.config({ path: testEnvPath });
 dotenv.config({ path: defaultEnvPath });
 process.env.REQUIRE_AUTH = "false";
+process.env.REQUIRE_USER_ACCOUNTS = "false";
 process.env.AWS_REGION = "";
 process.env.S3_BUCKET = "";
 
@@ -42,11 +43,21 @@ async function request(
   options: {
     method?: string;
     body?: unknown;
+    token?: string;
+    headers?: Record<string, string>;
   } = {}
 ): Promise<{ status: number; json: unknown }> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers ?? {}),
+  };
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+  }
+
   const response = await fetch(`${baseUrl}${requestPath}`, {
     method: options.method ?? "GET",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
@@ -74,6 +85,9 @@ async function request(
 async function resetDatabase(): Promise<void> {
   await pool.query("DROP TABLE IF EXISTS items CASCADE");
   await pool.query("DROP TABLE IF EXISTS locations CASCADE");
+  await pool.query("DROP TABLE IF EXISTS password_reset_tokens CASCADE");
+  await pool.query("DROP TABLE IF EXISTS user_sessions CASCADE");
+  await pool.query("DROP TABLE IF EXISTS users CASCADE");
   await pool.query("DROP TABLE IF EXISTS schema_migrations CASCADE");
   await pool.query("DROP FUNCTION IF EXISTS set_updated_at() CASCADE");
   await applyPendingMigrations();
@@ -82,6 +96,9 @@ async function resetDatabase(): Promise<void> {
 async function clearData(): Promise<void> {
   await pool.query("DELETE FROM items");
   await pool.query("DELETE FROM locations");
+  await pool.query("DELETE FROM password_reset_tokens");
+  await pool.query("DELETE FROM user_sessions");
+  await pool.query("DELETE FROM users");
 }
 
 before(async () => {
@@ -687,4 +704,187 @@ test("POST /import/inventory?remap_ids=true merges payload into non-empty invent
   assert.equal(new Set(nonNullCodes).size, nonNullCodes.length);
   assert.ok(nonNullCodes.includes("H1"));
   assert.ok(nonNullCodes.some((code) => code.startsWith("H1-import-")));
+});
+
+test("Auth register/login/logout flow issues and revokes bearer sessions", async () => {
+  const registered = await request("/auth/register", {
+    method: "POST",
+    body: {
+      email: "owner1@example.com",
+      password: "SuperSecret123!",
+      display_name: "Owner One",
+    },
+  });
+  assert.equal(registered.status, 201);
+  const registerJson = registered.json as {
+    user: { id: string; email: string; display_name: string | null };
+    token: string;
+    expires_at: string;
+  };
+
+  assert.equal(registerJson.user.email, "owner1@example.com");
+  assert.equal(registerJson.user.display_name, "Owner One");
+  assert.ok(registerJson.token.length > 20);
+  assert.ok(typeof registerJson.expires_at === "string");
+
+  const me = await request("/auth/me", { token: registerJson.token });
+  assert.equal(me.status, 200);
+
+  const loggedOut = await request("/auth/logout", {
+    method: "POST",
+    token: registerJson.token,
+  });
+  assert.equal(loggedOut.status, 200);
+  assert.deepEqual(loggedOut.json, { logged_out: true });
+
+  const meAfterLogout = await request("/auth/me", { token: registerJson.token });
+  assert.equal(meAfterLogout.status, 401);
+
+  const loggedIn = await request("/auth/login", {
+    method: "POST",
+    body: { email: "owner1@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(loggedIn.status, 200);
+  const loginJson = loggedIn.json as { token: string; user: { email: string } };
+  assert.equal(loginJson.user.email, "owner1@example.com");
+  assert.ok(loginJson.token.length > 20);
+});
+
+test("Password reset flow issues one-time token and rotates credentials", async () => {
+  const registered = await request("/auth/register", {
+    method: "POST",
+    body: {
+      email: "reset-user@example.com",
+      password: "OldPassword123!",
+    },
+  });
+  assert.equal(registered.status, 201);
+
+  const forgot = await request("/auth/forgot-password", {
+    method: "POST",
+    body: { email: "reset-user@example.com" },
+  });
+  assert.equal(forgot.status, 200);
+
+  const forgotJson = forgot.json as {
+    accepted: boolean;
+    reset_token: string | null;
+    expires_at: string | null;
+  };
+  assert.equal(forgotJson.accepted, true);
+  assert.ok(typeof forgotJson.reset_token === "string" && forgotJson.reset_token.length > 20);
+  assert.ok(typeof forgotJson.expires_at === "string");
+
+  const reset = await request("/auth/reset-password", {
+    method: "POST",
+    body: { token: forgotJson.reset_token, new_password: "NewPassword123!" },
+  });
+  assert.equal(reset.status, 200);
+  assert.deepEqual(reset.json, { reset: true });
+
+  const reused = await request("/auth/reset-password", {
+    method: "POST",
+    body: { token: forgotJson.reset_token, new_password: "AnotherPassword123!" },
+  });
+  assert.equal(reused.status, 400);
+
+  const loginOld = await request("/auth/login", {
+    method: "POST",
+    body: { email: "reset-user@example.com", password: "OldPassword123!" },
+  });
+  assert.equal(loginOld.status, 401);
+
+  const loginNew = await request("/auth/login", {
+    method: "POST",
+    body: { email: "reset-user@example.com", password: "NewPassword123!" },
+  });
+  assert.equal(loginNew.status, 200);
+});
+
+test("Owner-scoped access isolates inventory across users", async () => {
+  const user1 = await request("/auth/register", {
+    method: "POST",
+    body: { email: "user1@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(user1.status, 201);
+  const user1Token = (user1.json as { token: string }).token;
+
+  const user2 = await request("/auth/register", {
+    method: "POST",
+    body: { email: "user2@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(user2.status, 201);
+  const user2Token = (user2.json as { token: string }).token;
+
+  const root = await request("/locations", {
+    method: "POST",
+    token: user1Token,
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const user2Root = await request("/locations", {
+    method: "POST",
+    token: user2Token,
+    body: { name: "Apartment", code: "H1", type: "home", parent_id: null },
+  });
+  assert.equal(user2Root.status, 201);
+
+  const createdItem = await request("/items", {
+    method: "POST",
+    token: user1Token,
+    body: {
+      name: "Pressure Washer",
+      keywords: ["tool", "washer"],
+      location_id: rootId,
+    },
+  });
+  assert.equal(createdItem.status, 201);
+  const itemId = (createdItem.json as { id: string }).id;
+
+  const user1GetsItem = await request(`/items/${itemId}`, { token: user1Token });
+  assert.equal(user1GetsItem.status, 200);
+
+  const user2GetsItem = await request(`/items/${itemId}`, { token: user2Token });
+  assert.equal(user2GetsItem.status, 404);
+
+  const anonymousGetsItem = await request(`/items/${itemId}`);
+  assert.equal(anonymousGetsItem.status, 404);
+
+  const user2Search = await request("/items/search?q=pressure&limit=10&offset=0", {
+    token: user2Token,
+  });
+  assert.equal(user2Search.status, 200);
+  const user2SearchJson = user2Search.json as { total: number };
+  assert.equal(user2SearchJson.total, 0);
+
+  const user2CannotCreateInUser1Location = await request("/items", {
+    method: "POST",
+    token: user2Token,
+    body: {
+      name: "Cross Tenant Item",
+      keywords: ["blocked"],
+      location_id: rootId,
+    },
+  });
+  assert.equal(user2CannotCreateInUser1Location.status, 404);
+
+  const user2Tree = await request("/inventory/tree", { token: user2Token });
+  assert.equal(user2Tree.status, 200);
+  const user2TreeJson = user2Tree.json as { total_locations: number; total_items: number };
+  assert.equal(user2TreeJson.total_locations, 1);
+  assert.equal(user2TreeJson.total_items, 0);
+
+  const user1Export = await request("/export/inventory", { token: user1Token });
+  assert.equal(user1Export.status, 200);
+  const user1ExportJson = user1Export.json as { counts: { locations: number; items: number } };
+  assert.equal(user1ExportJson.counts.locations, 1);
+  assert.equal(user1ExportJson.counts.items, 1);
+
+  const user2Export = await request("/export/inventory", { token: user2Token });
+  assert.equal(user2Export.status, 200);
+  const user2ExportJson = user2Export.json as { counts: { locations: number; items: number } };
+  assert.equal(user2ExportJson.counts.locations, 1);
+  assert.equal(user2ExportJson.counts.items, 0);
 });

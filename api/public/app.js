@@ -3,6 +3,24 @@ const searchBtn = document.getElementById("searchBtn");
 const resultsEl = document.getElementById("results");
 const statusEl = document.getElementById("status");
 const metaEl = document.getElementById("meta");
+const authStateHintEl = document.getElementById("authStateHint");
+
+const authLoggedOutEl = document.getElementById("authLoggedOut");
+const authLoggedInEl = document.getElementById("authLoggedIn");
+const authUserEmailEl = document.getElementById("authUserEmail");
+const logoutBtn = document.getElementById("logoutBtn");
+const loginForm = document.getElementById("loginForm");
+const registerForm = document.getElementById("registerForm");
+const forgotPasswordForm = document.getElementById("forgotPasswordForm");
+const resetPasswordForm = document.getElementById("resetPasswordForm");
+const loginEmailInput = document.getElementById("loginEmail");
+const loginPasswordInput = document.getElementById("loginPassword");
+const registerDisplayNameInput = document.getElementById("registerDisplayName");
+const registerEmailInput = document.getElementById("registerEmail");
+const registerPasswordInput = document.getElementById("registerPassword");
+const forgotEmailInput = document.getElementById("forgotEmail");
+const resetTokenInput = document.getElementById("resetToken");
+const resetNewPasswordInput = document.getElementById("resetNewPassword");
 
 const treeViewEl = document.getElementById("treeView");
 const treeTextEl = document.getElementById("treeText");
@@ -77,6 +95,11 @@ let locationPathMap = new Map();
 let itemPathMap = new Map();
 let selectedLocationId = null;
 let selectedItemId = null;
+let authToken = "";
+let authUser = null;
+
+const AUTH_TOKEN_STORAGE_KEY = "home_inventory_auth_token";
+const AUTH_USER_STORAGE_KEY = "home_inventory_auth_user";
 const allModals = [
   createActionsModal,
   createLocationModal,
@@ -88,6 +111,72 @@ const allModals = [
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function setAuthStateHint(message) {
+  authStateHintEl.textContent = message;
+}
+
+function persistAuthSession() {
+  if (!authToken || !authUser) {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    return;
+  }
+
+  localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, authToken);
+  localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(authUser));
+}
+
+function applyAuthUiState() {
+  if (authUser && authToken) {
+    authLoggedOutEl.hidden = true;
+    authLoggedInEl.hidden = false;
+    authUserEmailEl.textContent = authUser.email || "account";
+    setAuthStateHint("Signed in");
+    return;
+  }
+
+  authLoggedOutEl.hidden = false;
+  authLoggedInEl.hidden = true;
+  authUserEmailEl.textContent = "-";
+  setAuthStateHint("Not signed in");
+}
+
+function setAuthSession(token, user) {
+  authToken = token || "";
+  authUser = user || null;
+  persistAuthSession();
+  applyAuthUiState();
+}
+
+function clearAuthSession() {
+  setAuthSession("", null);
+}
+
+function restoreAuthSessionFromStorage() {
+  try {
+    const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "";
+    const rawUser = localStorage.getItem(AUTH_USER_STORAGE_KEY);
+    const user = rawUser ? JSON.parse(rawUser) : null;
+    setAuthSession(token, user);
+  } catch {
+    clearAuthSession();
+  }
+}
+
+async function hydrateSessionUser() {
+  if (!authToken) {
+    applyAuthUiState();
+    return;
+  }
+
+  try {
+    const me = await fetchJson("/auth/me");
+    setAuthSession(authToken, me.user || null);
+  } catch {
+    clearAuthSession();
+  }
 }
 
 function escapeHtml(value) {
@@ -164,10 +253,20 @@ function openImageLightbox(imageUrl, caption = "") {
   openModal(imageLightboxModal);
 }
 
-async function fetchJson(path, options) {
+async function fetchJson(path, options = {}) {
+  const { skipAuth = false, headers: extraHeaders = {}, ...requestOptions } = options;
+  const headers = {
+    "Content-Type": "application/json",
+    ...extraHeaders,
+  };
+
+  if (authToken && !skipAuth) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
+    headers,
+    ...requestOptions,
   });
 
   const text = await response.text();
@@ -183,6 +282,12 @@ async function fetchJson(path, options) {
         : data && typeof data.error === "string"
           ? data.error
           : `Request failed (${response.status})`;
+
+    if (response.status === 401 && authToken && !skipAuth && !path.startsWith("/auth/")) {
+      clearAuthSession();
+      applyAuthUiState();
+    }
+
     throw new Error(message);
   }
 
@@ -960,6 +1065,129 @@ uploadEditItemImageBtn.addEventListener("click", () => {
   );
 });
 
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const email = loginEmailInput.value.trim();
+  const password = loginPasswordInput.value;
+  if (!email || !password) {
+    setStatus("Email and password are required.");
+    return;
+  }
+
+  try {
+    const payload = await fetchJson("/auth/login", {
+      method: "POST",
+      skipAuth: true,
+      body: JSON.stringify({ email, password }),
+    });
+    setAuthSession(payload.token, payload.user);
+    loginForm.reset();
+    hideEditors();
+    await refreshAll();
+    setStatus("Signed in.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+});
+
+registerForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const email = registerEmailInput.value.trim();
+  const password = registerPasswordInput.value;
+  const displayName = registerDisplayNameInput.value.trim();
+  if (!email || !password) {
+    setStatus("Email and password are required.");
+    return;
+  }
+
+  try {
+    const payload = await fetchJson("/auth/register", {
+      method: "POST",
+      skipAuth: true,
+      body: JSON.stringify({
+        email,
+        password,
+        display_name: displayName || null,
+      }),
+    });
+    setAuthSession(payload.token, payload.user);
+    registerForm.reset();
+    hideEditors();
+    await refreshAll();
+    setStatus("Account created and signed in.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+});
+
+forgotPasswordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const email = forgotEmailInput.value.trim();
+  if (!email) {
+    setStatus("Email is required.");
+    return;
+  }
+
+  try {
+    const payload = await fetchJson("/auth/forgot-password", {
+      method: "POST",
+      skipAuth: true,
+      body: JSON.stringify({ email }),
+    });
+    if (payload.reset_token) {
+      resetTokenInput.value = payload.reset_token;
+      setStatus(`Reset token generated. Expires at: ${payload.expires_at}`);
+    } else {
+      setStatus("If that account exists, a reset token was issued.");
+    }
+    forgotPasswordForm.reset();
+  } catch (error) {
+    setStatus(error.message);
+  }
+});
+
+resetPasswordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const token = resetTokenInput.value.trim();
+  const newPassword = resetNewPasswordInput.value;
+
+  if (!token || !newPassword) {
+    setStatus("Reset token and new password are required.");
+    return;
+  }
+
+  try {
+    await fetchJson("/auth/reset-password", {
+      method: "POST",
+      skipAuth: true,
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+    resetPasswordForm.reset();
+    setStatus("Password reset successful. You can now sign in.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+});
+
+logoutBtn.addEventListener("click", async () => {
+  try {
+    await fetchJson("/auth/logout", { method: "POST" });
+  } catch {
+    // Ignore logout failure and clear local session anyway.
+  } finally {
+    clearAuthSession();
+    hideEditors();
+    resultsEl.innerHTML = "";
+    metaEl.textContent = "";
+    treeMetaEl.textContent = "";
+    treeViewEl.innerHTML = "";
+    treeTextEl.textContent = "";
+    setStatus("Signed out.");
+  }
+});
+
 searchBtn.addEventListener("click", () => {
   void search();
 });
@@ -973,11 +1201,17 @@ queryInput.addEventListener("keydown", (event) => {
 
 window.addEventListener("load", async () => {
   try {
+    restoreAuthSessionFromStorage();
+    await hydrateSessionUser();
     hideEditors();
     await refreshAll();
     updateActionState();
     setStatus("Ready.");
   } catch (error) {
-    setStatus(`Startup error: ${error.message}`);
+    if (String(error.message || "").toLowerCase().includes("authentication")) {
+      setStatus("Sign in to load inventory.");
+    } else {
+      setStatus(`Startup error: ${error.message}`);
+    }
   }
 });

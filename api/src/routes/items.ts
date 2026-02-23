@@ -15,6 +15,7 @@ import { pool } from "../db/pool";
 import { env } from "../config/env";
 import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
 import { ItemRow } from "../types";
+import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
 import { isUuid, normalizeOptionalText, readLimitOffset } from "../utils";
 
 const itemsRouter = Router();
@@ -30,6 +31,7 @@ function dbError(error: unknown, res: Response) {
 }
 
 itemsRouter.post("/items", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const name = asRequiredText(req.body.name);
   const description = asOptionalText(req.body.description);
   const imageUrl = asOptionalText(req.body.image_url);
@@ -41,13 +43,25 @@ itemsRouter.post("/items", async (req, res) => {
   }
 
   try {
+    const location = await pool.query(
+      `
+      SELECT id
+      FROM locations
+      WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+      `,
+      [locationId, ownerUserId]
+    );
+    if (location.rowCount === 0) {
+      return res.status(404).json({ error: "location_id not found" });
+    }
+
     const result = await pool.query<ItemRow>(
       `
-      INSERT INTO items(name, description, keywords, location_id, image_url)
-      VALUES ($1, $2, $3::text[], $4, $5)
+      INSERT INTO items(name, description, keywords, location_id, image_url, owner_user_id)
+      VALUES ($1, $2, $3::text[], $4, $5, $6)
       RETURNING *
       `,
-      [name, description, keywords, locationId, imageUrl]
+      [name, description, keywords, locationId, imageUrl, ownerUserId]
     );
 
     return res.status(201).json(result.rows[0]);
@@ -57,13 +71,21 @@ itemsRouter.post("/items", async (req, res) => {
 });
 
 itemsRouter.get("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid item id");
   }
 
   try {
-    const result = await pool.query<ItemRow>("SELECT * FROM items WHERE id = $1", [id]);
+    const result = await pool.query<ItemRow>(
+      `
+      SELECT *
+      FROM items
+      WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+      `,
+      [id, ownerUserId]
+    );
     if (result.rowCount === 0) {
       return sendNotFound(res, "Item not found");
     }
@@ -75,6 +97,7 @@ itemsRouter.get("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
 });
 
 itemsRouter.get("/items", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const locationId = normalizeOptionalText(req.query.location_id);
   if (locationId && !isUuid(locationId)) {
     return sendValidationError(res, "location_id must be UUID");
@@ -83,12 +106,12 @@ itemsRouter.get("/items", async (req, res) => {
   const { limit, offset } = readLimitOffset(req);
 
   try {
-    const values: Array<string | number> = [];
-    let whereClause = "";
+    const values: Array<string | number | null> = [ownerUserId];
+    const whereParts = [ownerScopeSql("owner_user_id", 1)];
 
     if (locationId) {
-      whereClause = "WHERE location_id = $1";
       values.push(locationId);
+      whereParts.push(`location_id = $${values.length}`);
     }
 
     values.push(limit, offset);
@@ -100,7 +123,7 @@ itemsRouter.get("/items", async (req, res) => {
       `
       SELECT *
       FROM items
-      ${whereClause}
+      WHERE ${whereParts.join(" AND ")}
       ORDER BY name ASC
       LIMIT ${limitParam}
       OFFSET ${offsetParam}
@@ -115,12 +138,14 @@ itemsRouter.get("/items", async (req, res) => {
 });
 
 itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid item id");
   }
 
   const updates: Array<{ key: string; value: unknown }> = [];
+  let pendingLocationId: string | null = null;
 
   if ("name" in req.body) {
     const name = normalizeOptionalText(req.body.name);
@@ -150,6 +175,7 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     if (!locationId || !isUuid(locationId)) {
       return sendValidationError(res, "location_id must be UUID");
     }
+    pendingLocationId = locationId;
     updates.push({ key: "location_id", value: locationId });
   }
 
@@ -162,6 +188,20 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
   }
 
   try {
+    if (pendingLocationId) {
+      const location = await pool.query(
+        `
+        SELECT id
+        FROM locations
+        WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+        `,
+        [pendingLocationId, ownerUserId]
+      );
+      if (location.rowCount === 0) {
+        return res.status(404).json({ error: "location_id not found" });
+      }
+    }
+
     const setClause = updates.map((entry, index) => `${entry.key} = $${index + 1}`).join(", ");
 
     const values = updates.map((entry) => entry.value);
@@ -171,9 +211,10 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
       UPDATE items
       SET ${setClause}
       WHERE id = $${updates.length + 1}
+        AND ${ownerScopeSql("owner_user_id", updates.length + 2)}
       RETURNING *
       `,
-      [...values, id]
+      [...values, id, ownerUserId]
     );
 
     if (result.rowCount === 0) {
@@ -187,13 +228,17 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
 });
 
 itemsRouter.delete("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid item id");
   }
 
   try {
-    const result = await pool.query("DELETE FROM items WHERE id = $1", [id]);
+    const result = await pool.query(
+      `DELETE FROM items WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}`,
+      [id, ownerUserId]
+    );
     if (result.rowCount === 0) {
       return sendNotFound(res, "Item not found");
     }
@@ -205,6 +250,7 @@ itemsRouter.delete("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
 });
 
 itemsRouter.get("/items/search", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const q = normalizeOptionalText(req.query.q);
   if (!q) {
     return sendValidationError(res, "q is required");
@@ -225,27 +271,30 @@ itemsRouter.get("/items/search", async (req, res) => {
       WITH RECURSIVE location_paths AS (
         SELECT id, parent_id, name, name::text AS path
         FROM locations
-        WHERE parent_id IS NULL
+        WHERE parent_id IS NULL AND ${ownerScopeSql("owner_user_id", 2)}
         UNION ALL
         SELECT l.id, l.parent_id, l.name, lp.path || ' > ' || l.name
         FROM locations l
         JOIN location_paths lp ON l.parent_id = lp.id
+        WHERE ${ownerScopeSql("l.owner_user_id", 2)}
       ),
       filtered AS (
         SELECT i.id, i.name, i.image_url, lp.path AS location_path
         FROM items i
         JOIN location_paths lp ON lp.id = i.location_id
         WHERE
-          i.name ILIKE $1 OR
-          COALESCE(i.description, '') ILIKE $1 OR
-          array_to_string(i.keywords, ' ') ILIKE $1
+          ${ownerScopeSql("i.owner_user_id", 2)} AND (
+            i.name ILIKE $1 OR
+            COALESCE(i.description, '') ILIKE $1 OR
+            array_to_string(i.keywords, ' ') ILIKE $1
+          )
       )
       SELECT id, name, image_url, location_path, COUNT(*) OVER()::text AS total_count
       FROM filtered
       ORDER BY name ASC
-      LIMIT $2 OFFSET $3
+      LIMIT $3 OFFSET $4
       `,
-      [needle, limit, offset]
+      [needle, ownerUserId, limit, offset]
     );
 
     const total = Number(result.rows[0]?.total_count ?? "0");

@@ -9,6 +9,7 @@ import {
 import { asOptionalText, asOptionalUuid, asRequiredText } from "../middleware/validation";
 import { pool } from "../db/pool";
 import { LocationRow } from "../types";
+import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
 import { isUuid, normalizeOptionalText } from "../utils";
 
 const locationsRouter = Router();
@@ -26,6 +27,7 @@ function handleDbError(error: unknown, res: Response) {
 }
 
 locationsRouter.post("/locations", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const name = asRequiredText(req.body.name);
   const code = asOptionalText(req.body.code);
   const type = asOptionalText(req.body.type);
@@ -43,7 +45,14 @@ locationsRouter.post("/locations", async (req, res) => {
 
   try {
     if (parentId) {
-      const parent = await pool.query("SELECT id FROM locations WHERE id = $1", [parentId]);
+      const parent = await pool.query(
+        `
+        SELECT id
+        FROM locations
+        WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+        `,
+        [parentId, ownerUserId]
+      );
       if (parent.rowCount === 0) {
         return sendValidationError(res, "parent_id does not exist");
       }
@@ -51,11 +60,11 @@ locationsRouter.post("/locations", async (req, res) => {
 
     const result = await pool.query<LocationRow>(
       `
-      INSERT INTO locations(name, code, type, parent_id, description, image_url)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO locations(name, code, type, parent_id, description, image_url, owner_user_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
       `,
-      [name, code, type, parentId, description, imageUrl]
+      [name, code, type, parentId, description, imageUrl, ownerUserId]
     );
 
     return res.status(201).json(result.rows[0]);
@@ -65,6 +74,7 @@ locationsRouter.post("/locations", async (req, res) => {
 });
 
 locationsRouter.get("/locations/tree", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const rootId = normalizeOptionalText(req.query.root_id);
 
   if (rootId && !isUuid(rootId)) {
@@ -83,20 +93,20 @@ locationsRouter.get("/locations/tree", async (req, res) => {
       const result = await pool.query<LocationRow>(
         `
         WITH RECURSIVE tree AS (
-          SELECT id, name, code, type, parent_id, description, image_url, created_at, updated_at, 1 AS depth
+          SELECT id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id, 1 AS depth
           FROM locations
-          WHERE id = $1
+          WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 3)}
           UNION ALL
-          SELECT l.id, l.name, l.code, l.type, l.parent_id, l.description, l.image_url, l.created_at, l.updated_at, tree.depth + 1
+          SELECT l.id, l.name, l.code, l.type, l.parent_id, l.description, l.image_url, l.created_at, l.updated_at, l.owner_user_id, tree.depth + 1
           FROM locations l
           JOIN tree ON l.parent_id = tree.id
-          WHERE tree.depth < $2
+          WHERE tree.depth < $2 AND ${ownerScopeSql("l.owner_user_id", 3)}
         )
-        SELECT id, name, code, type, parent_id, description, image_url, created_at, updated_at
+        SELECT id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id
         FROM tree
         ORDER BY name ASC
         `,
-        [rootId, maxDepth]
+        [rootId, maxDepth, ownerUserId]
       );
       rows = result.rows;
       if (rows.length === 0) {
@@ -105,10 +115,12 @@ locationsRouter.get("/locations/tree", async (req, res) => {
     } else {
       const result = await pool.query<LocationRow>(
         `
-        SELECT id, name, code, type, parent_id, description, image_url, created_at, updated_at
+        SELECT id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id
         FROM locations
+        WHERE ${ownerScopeSql("owner_user_id", 1)}
         ORDER BY name ASC
-        `
+        `,
+        [ownerUserId]
       );
       rows = result.rows;
     }
@@ -145,6 +157,7 @@ locationsRouter.get("/locations/tree", async (req, res) => {
 });
 
 locationsRouter.get("/locations/:id/path", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid location id");
@@ -156,19 +169,20 @@ locationsRouter.get("/locations/:id/path", async (req, res) => {
       WITH RECURSIVE ancestors AS (
         SELECT id, parent_id, name, 1 AS depth
         FROM locations
-        WHERE id = $1
+        WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
         UNION ALL
         SELECT l.id, l.parent_id, l.name, ancestors.depth + 1
         FROM locations l
         JOIN ancestors ON ancestors.parent_id = l.id
+        WHERE ${ownerScopeSql("l.owner_user_id", 2)}
       )
       SELECT
         $1::uuid AS id,
-        (SELECT name FROM locations WHERE id = $1) AS name,
+        (SELECT name FROM locations WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}) AS name,
         string_agg(name, ' > ' ORDER BY depth DESC) AS path
       FROM ancestors
       `,
-      [id]
+      [id, ownerUserId]
     );
 
     if (!result.rows[0]?.name) {
@@ -182,6 +196,7 @@ locationsRouter.get("/locations/:id/path", async (req, res) => {
 });
 
 locationsRouter.patch("/locations/:id", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid location id");
@@ -227,7 +242,14 @@ locationsRouter.patch("/locations/:id", async (req, res) => {
 
     try {
       if (parentId) {
-        const parentCheck = await pool.query("SELECT id FROM locations WHERE id = $1", [parentId]);
+        const parentCheck = await pool.query(
+          `
+          SELECT id
+          FROM locations
+          WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}
+          `,
+          [parentId, ownerUserId]
+        );
         if (parentCheck.rowCount === 0) {
           return sendValidationError(res, "parent_id does not exist");
         }
@@ -237,18 +259,19 @@ locationsRouter.patch("/locations/:id", async (req, res) => {
           WITH RECURSIVE subtree AS (
             SELECT id
             FROM locations
-            WHERE id = $1
+            WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 3)}
             UNION ALL
             SELECT l.id
             FROM locations l
             JOIN subtree s ON l.parent_id = s.id
+            WHERE ${ownerScopeSql("l.owner_user_id", 3)}
           )
           SELECT 1
           FROM subtree
           WHERE id = $2
           LIMIT 1
           `,
-          [id, parentId]
+          [id, parentId, ownerUserId]
         );
 
         if ((cycleCheck.rowCount ?? 0) > 0) {
@@ -275,9 +298,10 @@ locationsRouter.patch("/locations/:id", async (req, res) => {
       UPDATE locations
       SET ${setClause}
       WHERE id = $${updates.length + 1}
+        AND ${ownerScopeSql("owner_user_id", updates.length + 2)}
       RETURNING *
       `,
-      [...values, id]
+      [...values, id, ownerUserId]
     );
 
     if (result.rowCount === 0) {
@@ -291,6 +315,7 @@ locationsRouter.patch("/locations/:id", async (req, res) => {
 });
 
 locationsRouter.delete("/locations/:id", async (req, res) => {
+  const ownerUserId = requestOwnerUserId(req);
   const id = req.params.id;
   if (!isUuid(id)) {
     return sendValidationError(res, "Invalid location id");
@@ -298,9 +323,18 @@ locationsRouter.delete("/locations/:id", async (req, res) => {
 
   try {
     const [location, children, items] = await Promise.all([
-      pool.query("SELECT id FROM locations WHERE id = $1", [id]),
-      pool.query("SELECT 1 FROM locations WHERE parent_id = $1 LIMIT 1", [id]),
-      pool.query("SELECT 1 FROM items WHERE location_id = $1 LIMIT 1", [id]),
+      pool.query(
+        `SELECT id FROM locations WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}`,
+        [id, ownerUserId]
+      ),
+      pool.query(
+        `SELECT 1 FROM locations WHERE parent_id = $1 AND ${ownerScopeSql("owner_user_id", 2)} LIMIT 1`,
+        [id, ownerUserId]
+      ),
+      pool.query(
+        `SELECT 1 FROM items WHERE location_id = $1 AND ${ownerScopeSql("owner_user_id", 2)} LIMIT 1`,
+        [id, ownerUserId]
+      ),
     ]);
 
     if (location.rowCount === 0) {
@@ -311,7 +345,10 @@ locationsRouter.delete("/locations/:id", async (req, res) => {
       return sendConflict(res, "Cannot delete location with children or items");
     }
 
-    await pool.query("DELETE FROM locations WHERE id = $1", [id]);
+    await pool.query(
+      `DELETE FROM locations WHERE id = $1 AND ${ownerScopeSql("owner_user_id", 2)}`,
+      [id, ownerUserId]
+    );
     return res.status(204).send();
   } catch (error) {
     return sendInternalError(error, res);
