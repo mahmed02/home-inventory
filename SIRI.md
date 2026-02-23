@@ -1,23 +1,26 @@
 # Siri Shortcut Setup (MVP)
 
-This guide configures a simple Siri Shortcut that asks for an item name, calls your API, and reads the location out loud.
+This guide configures a Siri Shortcut that asks a natural-language inventory question, calls your API, and speaks the assistant response.
 
 ## Prerequisites
 
 - API server is running and reachable from the iPhone.
-- Endpoint available: `GET /api/items/lookup?q=<query>`
+- Endpoint available: `GET /api/items/lookup?q=<query>` (alias: `GET /shortcut/find-item?q=<query>`)
+- Auth mode chosen (`REQUIRE_AUTH` or `REQUIRE_USER_ACCOUNTS`; do not run both on-app at once).
 - API returns JSON like:
 
 ```json
 {
-  "query": "where is compressor",
+  "query": "where is my compressor",
+  "normalized_query": "where is my compressor",
   "intent": "find_item",
-  "confidence": 0.91,
+  "confidence": 0.69,
   "fallback": false,
   "answer": "Ryobi Air Compressor is in House > Garage > Shelf 2.",
   "item": "Ryobi Air Compressor",
   "location_path": "House > Garage > Shelf 2",
   "notes": "Green, under tarp",
+  "match_count": 1,
   "requires_confirmation": false
 }
 ```
@@ -27,7 +30,7 @@ This guide configures a simple Siri Shortcut that asks for an item name, calls y
 From a browser or terminal, verify:
 
 ```bash
-curl "http://<YOUR-HOST>:4000/api/items/lookup?q=compressor"
+curl "http://<YOUR-HOST>:4000/api/items/lookup?q=where%20is%20my%20compressor"
 ```
 
 If this fails, fix server/network first.
@@ -37,22 +40,28 @@ If this fails, fix server/network first.
 1. Open **Shortcuts** app.
 2. Tap **+** to create a new shortcut.
 3. Add action **Ask for Input**.
-   - Prompt: `What item are you looking for?`
+   - Prompt: `What do you want to know about your inventory?`
    - Input Type: `Text`
 4. Add action **URL**.
    - Value: `http://<YOUR-HOST>:4000/api/items/lookup?q=` then insert the **Provided Input** variable.
+   - Optional but recommended: add **URL Encode** on input text before appending.
 5. Add action **Get Contents of URL**.
    - Method: `GET`
    - Headers:
-     - If API auth is disabled (`REQUIRE_AUTH=false`): none.
-     - If API auth is enabled (`REQUIRE_AUTH=true`): add `Authorization` header with value `Basic <base64(user:pass)>`.
+     - If both `REQUIRE_AUTH=false` and `REQUIRE_USER_ACCOUNTS=false`: none.
+     - If `REQUIRE_AUTH=true`: add `Authorization: Basic <base64(user:pass)>`.
+     - If `REQUIRE_USER_ACCOUNTS=true`: add `Authorization: Bearer <session_token>`.
+     - If using household sharing and account auth: add `x-household-id: <household_uuid>` to scope answers to one household.
 6. Add action **Get Dictionary Value**.
-   - Key: `location_path`
-7. Add action **If** (Dictionary Value has any value).
-   - If true: add **Speak Text** with `It is in [Dictionary Value]`.
-   - Otherwise: add **Get Dictionary Value** (key: `notes`) and **Speak Text** with `[Dictionary Value]`.
+   - Key: `answer`
+7. Add action **Speak Text** with the `answer` value.
+8. Optional safety step:
+   - Read key `requires_confirmation`.
+   - If `true`, speak a caution like: `Action request detected. Manual confirmation required in app.`
+9. Optional fallback step:
+   - If `answer` is empty, read key `notes` and speak that instead.
 
-This handles both match and no-match responses.
+This gives natural responses for find/list/count prompts while handling guarded requests safely.
 
 ## 3) Add Siri Voice Phrase
 
@@ -65,6 +74,7 @@ Natural prompts also work, for example:
 - `Where is my compressor?`
 - `What is in the garage?`
 - `How many drill bits do I have?`
+- `Move the drill to attic` (returns guarded response requiring confirmation)
 
 ## 4) Share With Family
 
@@ -81,11 +91,13 @@ Natural prompts also work, for example:
   - Ensure API is listening on `0.0.0.0` and firewall allows port.
 
 - **Always getting no match**
-  - Confirm query term exists in item `name`/`keywords`.
+  - Confirm items/locations exist in the selected household scope.
+  - If using account auth, verify bearer token and optional `x-household-id`.
+  - Confirm query term exists in item `name`/`description`/`keywords`.
   - Test endpoint directly with the same term.
 
 - **Shortcut returns empty value**
-  - Verify response includes `location_path` when there is a match.
+  - Verify response includes `answer`.
   - Verify key spelling in **Get Dictionary Value** is exact.
 
 - **HTTPS requirement outside home network**
@@ -93,6 +105,7 @@ Natural prompts also work, for example:
 
 ## MVP Notes
 
-- Keep response small and predictable (`item`, `location_path`, `notes`).
-- Auth can be disabled on trusted home LAN only (`REQUIRE_AUTH=false`).
+- Response is raw JSON (not envelope-wrapped) for Shortcut compatibility.
+- Core fields for Siri flow: `answer`, `intent`, `confidence`, `fallback`, `requires_confirmation`.
+- Auth can be disabled on trusted home LAN only (`REQUIRE_AUTH=false` and `REQUIRE_USER_ACCOUNTS=false`).
 - For public/HTTPS exposure, keep auth enabled and use rate limiting.
