@@ -34,6 +34,27 @@ git_safe() {
   git -c safe.directory="$APP_DIR" "$@"
 }
 
+normalize_api_permissions() {
+  local owner_group
+  owner_group="$(id -un):$(id -gn)"
+  local targets=("$APP_DIR/api" "$APP_DIR/api/node_modules" "$APP_DIR/api/dist")
+
+  if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    for target in "${targets[@]}"; do
+      if [[ -e "$target" ]]; then
+        sudo chown -R -h "$owner_group" "$target"
+      fi
+    done
+    return
+  fi
+
+  for target in "${targets[@]}"; do
+    if [[ -e "$target" ]]; then
+      chown -R -h "$owner_group" "$target" 2>/dev/null || true
+    fi
+  done
+}
+
 echo "[deploy] Fetching repository updates"
 git_safe fetch --all --prune
 
@@ -45,6 +66,9 @@ fi
 
 echo "[deploy] Checking out ref: $DEPLOY_REF"
 git_safe checkout "$DEPLOY_REF"
+
+echo "[deploy] Normalizing API directory ownership"
+normalize_api_permissions
 
 if [[ -f "api/package-lock.json" ]]; then
   echo "[deploy] Installing API dependencies with npm ci"
