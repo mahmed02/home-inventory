@@ -22,6 +22,14 @@ if [[ -n "$BASIC_AUTH_USER" || -n "$BASIC_AUTH_PASS" ]]; then
   AUTH_ARGS=(-u "${BASIC_AUTH_USER}:${BASIC_AUTH_PASS}")
 fi
 
+HEALTH_BODY_FILE="$(mktemp /tmp/home_inventory_deploy_health.XXXXXX.json)"
+SEARCH_BODY_FILE="$(mktemp /tmp/home_inventory_deploy_search.XXXXXX.json)"
+
+cleanup_temp_files() {
+  rm -f "$HEALTH_BODY_FILE" "$SEARCH_BODY_FILE"
+}
+trap cleanup_temp_files EXIT
+
 git_safe() {
   git -c safe.directory="$APP_DIR" "$@"
 }
@@ -65,11 +73,11 @@ health_ok=false
 for attempt in $(seq 1 "$HEALTH_MAX_ATTEMPTS"); do
   health_status=$(curl -sS "${AUTH_ARGS[@]}" \
     --max-time 3 \
-    -o /tmp/home_inventory_deploy_health.json \
+    -o "$HEALTH_BODY_FILE" \
     -w "%{http_code}" \
     "http://127.0.0.1:4000/health" || true)
 
-  if [[ "$health_status" == "200" ]] && grep -q '"ok":true' /tmp/home_inventory_deploy_health.json; then
+  if [[ "$health_status" == "200" ]] && grep -q '"ok":true' "$HEALTH_BODY_FILE"; then
     health_ok=true
     break
   fi
@@ -82,12 +90,12 @@ done
 if [[ "$health_ok" != "true" ]]; then
   echo "[deploy] Health check failed after ${HEALTH_MAX_ATTEMPTS} attempts" >&2
   echo "[deploy] Last health status: ${health_status:-unknown}" >&2
-  cat /tmp/home_inventory_deploy_health.json >&2 || true
+  cat "$HEALTH_BODY_FILE" >&2 || true
   exit 1
 fi
 
 search_status=$(curl -sS "${AUTH_ARGS[@]}" \
-  -o /tmp/home_inventory_deploy_search.json \
+  -o "$SEARCH_BODY_FILE" \
   -w "%{http_code}" \
   "http://127.0.0.1:4000/items/search?q=tool&limit=1&offset=0")
 
@@ -96,12 +104,12 @@ if [[ "$search_status" == "401" && "${#AUTH_ARGS[@]}" -eq 0 ]]; then
 else
   if [[ "$search_status" != "200" ]]; then
     echo "[deploy] Search check failed with HTTP $search_status" >&2
-    cat /tmp/home_inventory_deploy_search.json >&2 || true
+    cat "$SEARCH_BODY_FILE" >&2 || true
     exit 1
   fi
 
-  if ! grep -q '"ok":true' /tmp/home_inventory_deploy_search.json; then
-    echo "[deploy] Search check failed: $(cat /tmp/home_inventory_deploy_search.json)" >&2
+  if ! grep -q '"ok":true' "$SEARCH_BODY_FILE"; then
+    echo "[deploy] Search check failed: $(cat "$SEARCH_BODY_FILE")" >&2
     exit 1
   fi
 fi
