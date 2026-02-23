@@ -74,6 +74,7 @@ This version tracks implementation in three views:
 - [x] Migrations executed on EC2 against RDS
 - [x] API process managed with PM2
 - [x] Private network validation over Tailscale
+- [x] Current private staging endpoint documented: `http://100.84.48.109:4000` (Tailscale)
 - [x] Smoke checks passed (`/health`, search, Siri)
 
 ---
@@ -86,7 +87,8 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 - [x] Decide hosting target (AWS stack vs Vercel/Supabase)
 - [x] Add baseline lint/format config and CI checks
 - [x] Add deployment checklist (env vars, DB migration runbook, backup schedule)
-- [ ] Add public staging domain + HTTPS (ACM + ALB/Nginx + DNS)
+- [ ] Add public staging domain + HTTPS (ACM + ALB/Nginx + DNS) [deferred]
+- [ ] Hook up Cloudflare DNS (`staging.myhomeinventory.net`) to AWS target [deferred]
 - [ ] Run smoke checks on HTTPS staging URL (including `CHECK_UPLOADS=true`)
 - [x] Add production cutover + rollback rehearsal notes after first HTTPS deploy
 
@@ -118,6 +120,14 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 ### Phase 6 — Container Movement Optimization
 - [ ] Location move confirmation UX and bulk impact visibility
 - [ ] Optional move preview (before/after path for affected items)
+
+### Phase 6.5 — Multi-User Accounts + Inventory Ownership
+- [ ] Add `users` table and account registration/login flow
+- [ ] Add authenticated session/JWT model and password reset path
+- [ ] Add ownership field to inventory entities (user or tenant scope)
+- [ ] Scope all reads/writes by authenticated owner
+- [ ] Add authorization tests to block cross-user access
+- [ ] Migrate existing single-inventory data to an initial owner
 
 ### Phase 7 — Semantic Search
 - [ ] Add embeddings column/store

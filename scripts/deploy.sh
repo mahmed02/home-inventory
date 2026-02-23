@@ -38,10 +38,6 @@ else
   npm --prefix ./api install
 fi
 
-# Ensure optional thumbnail dependency exists for upload finalize runtime
-# without mutating package-lock.json on the server.
-npm --prefix ./api install --no-save --no-package-lock sharp
-
 echo "[deploy] Running migrations"
 npm --prefix ./api run migrate
 

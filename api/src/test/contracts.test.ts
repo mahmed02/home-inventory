@@ -14,6 +14,8 @@ const defaultEnvPath = path.resolve(__dirname, "../../.env");
 dotenv.config({ path: testEnvPath });
 dotenv.config({ path: defaultEnvPath });
 process.env.REQUIRE_AUTH = "false";
+process.env.AWS_REGION = "";
+process.env.S3_BUCKET = "";
 
 if (process.env.TEST_DATABASE_URL) {
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;

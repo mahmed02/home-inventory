@@ -6,3 +6,5 @@ api/.env
 api/.env.test
 .DS_Store
 keys/
+DEPLOY.md
+STAGING_HTTPS_RUNBOOK.md

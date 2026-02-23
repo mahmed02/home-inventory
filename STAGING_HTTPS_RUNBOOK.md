@@ -5,10 +5,10 @@ This runbook closes the operational MVP gap for HTTPS staging, smoke checks, and
 ## 1) Public staging domain + HTTPS
 
 1. Create DNS record:
-- `staging.<your-domain>` -> ALB DNS name (or EC2 public IP if using Nginx only).
+- `staging.myhomeinventory.net` -> ALB DNS name (or EC2 public IP if using Nginx only).
 
 2. Provision TLS certificate in ACM:
-- Request cert for `staging.<your-domain>`.
+- Request cert for `staging.myhomeinventory.net`.
 - Complete DNS validation.
 
 3. Attach certificate:
@@ -16,24 +16,24 @@ This runbook closes the operational MVP gap for HTTPS staging, smoke checks, and
 - Nginx terminating TLS on EC2.
 
 4. Update app env on staging host:
-- `APP_BASE_URL=https://staging.<your-domain>`
+- `APP_BASE_URL=https://staging.myhomeinventory.net`
 - `ENABLE_DEV_ROUTES=false`
 - `REQUIRE_AUTH=true`
-- `BASIC_AUTH_USER=<BASIC_AUTH_USER>`
-- `BASIC_AUTH_PASS=<BASIC_AUTH_PASS>`
+- `BASIC_AUTH_USER=john`
+- `BASIC_AUTH_PASS=smith`
 
 5. Restart API process and verify:
-- `curl https://staging.<your-domain>/health`
+- `curl https://staging.myhomeinventory.net/health`
 
 ## 2) HTTPS smoke checks
 
 Run after deploy:
 
 ```bash
-BASE_URL=https://staging.<your-domain> CHECK_UPLOADS=true ./scripts/smoke.sh
+BASE_URL=https://staging.myhomeinventory.net CHECK_UPLOADS=true ./scripts/smoke.sh
 
 # With auth enabled:
-BASE_URL=https://staging.<your-domain> BASIC_AUTH_USER=<BASIC_AUTH_USER> BASIC_AUTH_PASS=<BASIC_AUTH_PASS> CHECK_UPLOADS=true ./scripts/smoke.sh
+BASE_URL=https://staging.myhomeinventory.net BASIC_AUTH_USER=john BASIC_AUTH_PASS=smith CHECK_UPLOADS=true ./scripts/smoke.sh
 ```
 
 Expected:
@@ -45,22 +45,22 @@ Expected:
 Run validation-only drill first:
 
 ```bash
-BASE_URL=https://staging.<your-domain> ./scripts/restore-drill.sh
+BASE_URL=https://staging.myhomeinventory.net ./scripts/restore-drill.sh
 
 # With auth enabled:
-BASE_URL=https://staging.<your-domain> BASIC_AUTH_USER=<BASIC_AUTH_USER> BASIC_AUTH_PASS=<BASIC_AUTH_PASS> ./scripts/restore-drill.sh
+BASE_URL=https://staging.myhomeinventory.net BASIC_AUTH_USER=john BASIC_AUTH_PASS=smith ./scripts/restore-drill.sh
 ```
 
 Optional merge drill:
 
 ```bash
-BASE_URL=https://staging.<your-domain> DRILL_MODE=merge ./scripts/restore-drill.sh
+BASE_URL=https://staging.myhomeinventory.net DRILL_MODE=merge ./scripts/restore-drill.sh
 ```
 
 Only run full replace when approved:
 
 ```bash
-BASE_URL=https://staging.<your-domain> DRILL_MODE=replace ALLOW_DESTRUCTIVE=true ./scripts/restore-drill.sh
+BASE_URL=https://staging.myhomeinventory.net DRILL_MODE=replace ALLOW_DESTRUCTIVE=true ./scripts/restore-drill.sh
 ```
 
 ## 4) First production cutover rehearsal notes
@@ -94,7 +94,7 @@ Rollback evidence:
 4. Run production smoke checks:
 
 ```bash
-BASE_URL=https://inventory.<your-domain> CHECK_UPLOADS=true ./scripts/smoke.sh
+BASE_URL=https://inventory.myhomeinventory.net CHECK_UPLOADS=true ./scripts/smoke.sh
 ```
 
 5. Monitor logs and DB health for 30 minutes.
