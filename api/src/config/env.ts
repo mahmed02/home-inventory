@@ -19,6 +19,10 @@ const s3Bucket = process.env.S3_BUCKET ?? "";
 const basicAuthUser = process.env.BASIC_AUTH_USER ?? "";
 const basicAuthPass = process.env.BASIC_AUTH_PASS ?? "";
 const sessionTtlHoursRaw = Number(process.env.SESSION_TTL_HOURS ?? "720");
+const embeddingsProvider = (process.env.EMBEDDINGS_PROVIDER ?? "deterministic")
+  .trim()
+  .toLowerCase();
+const embeddingDimensionsRaw = Number(process.env.EMBEDDING_DIMENSIONS ?? "64");
 const corsAllowOrigins = (process.env.CORS_ALLOW_ORIGINS ?? "")
   .split(",")
   .map((entry) => entry.trim())
@@ -60,6 +64,9 @@ const requireUserAccounts = resolveRequireUserAccounts();
 const sessionTtlHours = Number.isFinite(sessionTtlHoursRaw)
   ? Math.min(Math.max(Math.trunc(sessionTtlHoursRaw), 1), 24 * 365)
   : 720;
+const embeddingDimensions = Number.isFinite(embeddingDimensionsRaw)
+  ? Math.min(Math.max(Math.trunc(embeddingDimensionsRaw), 8), 2048)
+  : 64;
 
 if (!databaseUrl) {
   throw new Error("DATABASE_URL is required");
@@ -82,6 +89,8 @@ export const env = {
   requireAuth,
   requireUserAccounts,
   sessionTtlHours,
+  embeddingsProvider,
+  embeddingDimensions,
   basicAuthUser,
   basicAuthPass,
   appBaseUrl,

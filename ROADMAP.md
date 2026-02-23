@@ -140,8 +140,8 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - [x] Add sharing UX
 
 ### Phase 7 — Semantic Search
-- [ ] Add embeddings column/store
-- [ ] Generate embeddings on create/update
+- [x] Add embeddings column/store
+- [x] Generate embeddings on create/update
 - [ ] Similarity query + ranking
 
 ### Phase 8 — Natural Language Interface

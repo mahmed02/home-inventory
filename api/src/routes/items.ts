@@ -14,6 +14,7 @@ import {
 import { pool } from "../db/pool";
 import { env } from "../config/env";
 import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
+import { upsertItemEmbedding } from "../search/itemEmbeddings";
 import { ItemRow } from "../types";
 import {
   InventoryScope,
@@ -63,6 +64,7 @@ itemsRouter.post("/items", async (req, res) => {
     return sendValidationError(res, "name and location_id are required");
   }
 
+  const client = await pool.connect();
   try {
     const scope = await resolveScope(req, res);
     if (!scope) {
@@ -72,9 +74,10 @@ itemsRouter.post("/items", async (req, res) => {
       return;
     }
 
+    await client.query("BEGIN");
     const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
 
-    const location = await pool.query(
+    const location = await client.query(
       `
       SELECT id
       FROM locations
@@ -83,10 +86,11 @@ itemsRouter.post("/items", async (req, res) => {
       [locationId, ...locationScope.params]
     );
     if (location.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "location_id not found" });
     }
 
-    const result = await pool.query<ItemRow>(
+    const result = await client.query<ItemRow>(
       `
       INSERT INTO items(
         name,
@@ -103,9 +107,14 @@ itemsRouter.post("/items", async (req, res) => {
       [name, description, keywords, locationId, imageUrl, scope.ownerUserId, scope.householdId]
     );
 
+    await upsertItemEmbedding(result.rows[0], client);
+    await client.query("COMMIT");
     return res.status(201).json(result.rows[0]);
   } catch (error) {
+    await client.query("ROLLBACK");
     return dbError(error, res);
+  } finally {
+    client.release();
   }
 });
 
@@ -235,6 +244,7 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     return sendValidationError(res, "No valid fields provided");
   }
 
+  const client = await pool.connect();
   try {
     const scope = await resolveScope(req, res);
     if (!scope) {
@@ -244,9 +254,10 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
       return;
     }
 
+    await client.query("BEGIN");
     if (pendingLocationId) {
       const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
-      const location = await pool.query(
+      const location = await client.query(
         `
         SELECT id
         FROM locations
@@ -255,6 +266,7 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
         [pendingLocationId, ...locationScope.params]
       );
       if (location.rowCount === 0) {
+        await client.query("ROLLBACK");
         return res.status(404).json({ error: "location_id not found" });
       }
     }
@@ -264,7 +276,7 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     const values = updates.map((entry) => entry.value);
     const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", updates.length + 2);
 
-    const result = await pool.query<ItemRow>(
+    const result = await client.query<ItemRow>(
       `
       UPDATE items
       SET ${setClause}
@@ -276,12 +288,18 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     );
 
     if (result.rowCount === 0) {
+      await client.query("ROLLBACK");
       return sendNotFound(res, "Item not found");
     }
 
+    await upsertItemEmbedding(result.rows[0], client);
+    await client.query("COMMIT");
     return res.status(200).json(result.rows[0]);
   } catch (error) {
+    await client.query("ROLLBACK");
     return dbError(error, res);
+  } finally {
+    client.release();
   }
 });
 

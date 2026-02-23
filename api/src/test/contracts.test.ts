@@ -83,6 +83,7 @@ async function request(
 }
 
 async function resetDatabase(): Promise<void> {
+  await pool.query("DROP TABLE IF EXISTS item_embeddings CASCADE");
   await pool.query("DROP TABLE IF EXISTS items CASCADE");
   await pool.query("DROP TABLE IF EXISTS locations CASCADE");
   await pool.query("DROP TABLE IF EXISTS household_invitations CASCADE");
@@ -97,6 +98,7 @@ async function resetDatabase(): Promise<void> {
 }
 
 async function clearData(): Promise<void> {
+  await pool.query("DELETE FROM item_embeddings");
   await pool.query("DELETE FROM items");
   await pool.query("DELETE FROM locations");
   await pool.query("DELETE FROM household_invitations");
@@ -671,6 +673,25 @@ test("PATCH/DELETE item flow works end-to-end", async () => {
   assert.equal(item.status, 201);
   const itemId = (item.json as { id: string }).id;
 
+  const createdEmbedding = await pool.query<{
+    item_id: string;
+    model: string;
+    source_text: string;
+    embedding_length: number;
+  }>(
+    `
+    SELECT item_id, model, source_text, COALESCE(array_length(embedding, 1), 0) AS embedding_length
+    FROM item_embeddings
+    WHERE item_id = $1
+    `,
+    [itemId]
+  );
+  assert.equal(createdEmbedding.rowCount, 1);
+  assert.equal(createdEmbedding.rows[0].item_id, itemId);
+  assert.match(createdEmbedding.rows[0].model, /^deterministic-v1-\d+$/);
+  assert.equal(createdEmbedding.rows[0].source_text, "Impact Driver\ntool driver");
+  assert.ok(createdEmbedding.rows[0].embedding_length > 0);
+
   const updated = await request(`/items/${itemId}`, {
     method: "PATCH",
     body: {
@@ -689,8 +710,33 @@ test("PATCH/DELETE item flow works end-to-end", async () => {
   assert.equal(updatedJson.location_id, basementId);
   assert.deepEqual(updatedJson.keywords, ["tool", "driver", "m18"]);
 
+  const updatedEmbedding = await pool.query<{
+    source_text: string;
+    embedding_length: number;
+  }>(
+    `
+    SELECT source_text, COALESCE(array_length(embedding, 1), 0) AS embedding_length
+    FROM item_embeddings
+    WHERE item_id = $1
+    `,
+    [itemId]
+  );
+  assert.equal(updatedEmbedding.rowCount, 1);
+  assert.equal(updatedEmbedding.rows[0].source_text, "Impact Driver M18\ntool driver m18");
+  assert.ok(updatedEmbedding.rows[0].embedding_length > 0);
+
   const deleted = await request(`/items/${itemId}`, { method: "DELETE" });
   assert.equal(deleted.status, 204);
+
+  const deletedEmbedding = await pool.query(
+    `
+    SELECT 1
+    FROM item_embeddings
+    WHERE item_id = $1
+    `,
+    [itemId]
+  );
+  assert.equal(deletedEmbedding.rowCount, 0);
 
   const afterDelete = await request(`/items/${itemId}`);
   assert.equal(afterDelete.status, 404);

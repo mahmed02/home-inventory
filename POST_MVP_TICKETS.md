@@ -182,7 +182,7 @@ Status: `done`
 ## Phase 7 — Semantic Search
 
 ## 7-01) Embeddings Store + Provider Integration
-Status: `todo`
+Status: `done`
 - Scope:
   - Add embeddings schema/storage.
   - Integrate embedding generation provider interface.
