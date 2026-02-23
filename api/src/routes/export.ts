@@ -2,6 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { PoolClient } from "pg";
 import { pool } from "../db/pool";
+import { resolvePrimaryHouseholdIdForUser } from "../auth/households";
 import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
 import { createInMemoryRateLimit } from "../middleware/rateLimit";
 import { sendConflict, sendInternalError, sendValidationError } from "../middleware/http";
@@ -92,7 +93,8 @@ async function insertImportData(
   client: PoolClient,
   locations: LocationRow[],
   items: ItemRow[],
-  ownerUserId: string | null
+  ownerUserId: string | null,
+  householdId: string | null
 ): Promise<void> {
   await client.query(`DELETE FROM items WHERE ${ownerScopeSql("owner_user_id", 1)}`, [ownerUserId]);
   await client.query(`DELETE FROM locations WHERE ${ownerScopeSql("owner_user_id", 1)}`, [
@@ -103,9 +105,9 @@ async function insertImportData(
     await client.query(
       `
       INSERT INTO locations(
-        id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id
+        id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id, household_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       `,
       [
         row.id,
@@ -118,6 +120,7 @@ async function insertImportData(
         row.created_at,
         row.updated_at,
         ownerUserId,
+        householdId,
       ]
     );
   }
@@ -126,9 +129,9 @@ async function insertImportData(
     await client.query(
       `
       INSERT INTO items(
-        id, name, description, keywords, location_id, image_url, created_at, updated_at, owner_user_id
+        id, name, description, keywords, location_id, image_url, created_at, updated_at, owner_user_id, household_id
       )
-      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8,$9,$10)
       `,
       [
         row.id,
@@ -140,6 +143,7 @@ async function insertImportData(
         row.created_at,
         row.updated_at,
         ownerUserId,
+        householdId,
       ]
     );
   }
@@ -149,15 +153,16 @@ async function mergeImportData(
   client: PoolClient,
   locations: LocationRow[],
   items: ItemRow[],
-  ownerUserId: string | null
+  ownerUserId: string | null,
+  householdId: string | null
 ): Promise<void> {
   for (const row of locations) {
     await client.query(
       `
       INSERT INTO locations(
-        id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id
+        id, name, code, type, parent_id, description, image_url, created_at, updated_at, owner_user_id, household_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       `,
       [
         row.id,
@@ -170,6 +175,7 @@ async function mergeImportData(
         row.created_at,
         row.updated_at,
         ownerUserId,
+        householdId,
       ]
     );
   }
@@ -178,9 +184,9 @@ async function mergeImportData(
     await client.query(
       `
       INSERT INTO items(
-        id, name, description, keywords, location_id, image_url, created_at, updated_at, owner_user_id
+        id, name, description, keywords, location_id, image_url, created_at, updated_at, owner_user_id, household_id
       )
-      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8,$9,$10)
       `,
       [
         row.id,
@@ -192,6 +198,7 @@ async function mergeImportData(
         row.created_at,
         row.updated_at,
         ownerUserId,
+        householdId,
       ]
     );
   }
@@ -223,12 +230,22 @@ async function remapImportPayload(
   client: PoolClient,
   locations: LocationRow[],
   items: ItemRow[],
-  ownerUserId: string | null
+  ownerUserId: string | null,
+  householdId: string | null
 ): Promise<{ locations: LocationRow[]; items: ItemRow[] }> {
-  const existingCodesResult = await client.query<{ code: string }>(
-    `SELECT code FROM locations WHERE code IS NOT NULL AND ${ownerScopeSql("owner_user_id", 1)}`,
-    [ownerUserId]
-  );
+  const existingCodesResult = householdId
+    ? await client.query<{ code: string }>(
+        `
+        SELECT code
+        FROM locations
+        WHERE code IS NOT NULL AND household_id = $1
+        `,
+        [householdId]
+      )
+    : await client.query<{ code: string }>(
+        `SELECT code FROM locations WHERE code IS NOT NULL AND ${ownerScopeSql("owner_user_id", 1)}`,
+        [ownerUserId]
+      );
   const seenCodes = new Set(existingCodesResult.rows.map((row) => row.code));
 
   const locationIdMap = new Map<string, string>();
@@ -373,11 +390,18 @@ exportRouter.post("/import/inventory", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const householdId = await resolvePrimaryHouseholdIdForUser(ownerUserId, client);
     if (remapIds) {
-      const remapped = await remapImportPayload(client, sortedLocations, items, ownerUserId);
-      await mergeImportData(client, remapped.locations, remapped.items, ownerUserId);
+      const remapped = await remapImportPayload(
+        client,
+        sortedLocations,
+        items,
+        ownerUserId,
+        householdId
+      );
+      await mergeImportData(client, remapped.locations, remapped.items, ownerUserId, householdId);
     } else {
-      await insertImportData(client, sortedLocations, items, ownerUserId);
+      await insertImportData(client, sortedLocations, items, ownerUserId, householdId);
     }
     await client.query("COMMIT");
 

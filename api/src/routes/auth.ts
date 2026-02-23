@@ -1,8 +1,10 @@
 import { Router } from "express";
+import { PoolClient } from "pg";
 import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { getDbErrorCode, sendInternalError, sendValidationError } from "../middleware/http";
 import { asOptionalText, asRequiredText } from "../middleware/validation";
+import { ensureOwnerHouseholdForUser } from "../auth/households";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { generateSessionToken, hashSessionToken } from "../auth/session";
 
@@ -38,12 +40,17 @@ function passwordResetExpiryIso(): string {
   return new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000).toISOString();
 }
 
-async function issueSession(userId: string): Promise<{ token: string; expires_at: string }> {
+type Queryable = Pick<PoolClient, "query">;
+
+async function issueSession(
+  userId: string,
+  queryable: Queryable = pool
+): Promise<{ token: string; expires_at: string }> {
   const token = generateSessionToken();
   const tokenHash = hashSessionToken(token);
   const expiresAt = sessionExpiryIso();
 
-  await pool.query(
+  await queryable.query(
     `
     INSERT INTO user_sessions(user_id, token_hash, expires_at)
     VALUES ($1, $2, $3)
@@ -69,9 +76,11 @@ authRouter.post("/auth/register", async (req, res) => {
     );
   }
 
+  const client = await pool.connect();
   try {
     const passwordHash = hashPassword(password);
-    const inserted = await pool.query<{ id: string; email: string; display_name: string | null }>(
+    await client.query("BEGIN");
+    const inserted = await client.query<{ id: string; email: string; display_name: string | null }>(
       `
       INSERT INTO users(email, password_hash, display_name)
       VALUES ($1, $2, $3)
@@ -81,7 +90,9 @@ authRouter.post("/auth/register", async (req, res) => {
     );
 
     const user = inserted.rows[0];
-    const session = await issueSession(user.id);
+    await ensureOwnerHouseholdForUser(user.id, user.email, user.display_name, client);
+    const session = await issueSession(user.id, client);
+    await client.query("COMMIT");
 
     return res.status(201).json({
       user,
@@ -89,10 +100,13 @@ authRouter.post("/auth/register", async (req, res) => {
       expires_at: session.expires_at,
     });
   } catch (error) {
+    await client.query("ROLLBACK");
     if (getDbErrorCode(error) === "23505") {
       return res.status(409).json({ error: "Account already exists" });
     }
     return sendInternalError(error, res);
+  } finally {
+    client.release();
   }
 });
 

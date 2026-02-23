@@ -132,8 +132,8 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - [x] Migrate existing single-inventory data to an initial owner
 
 ### Phase 6.6 — Shared Household Access (Queued After 6.5 Completion)
-- [ ] Add `households` and `household_members` with roles (`owner`, `editor`, `viewer`)
-- [ ] Add invite + accept flow for owner-granted household access
+- [x] Add `households` and `household_members` with roles (`owner`, `editor`, `viewer`)
+- [x] Add invite + accept flow for owner-granted household membership
 - [ ] Refactor inventory ownership from user-only scope to household scope
 - [ ] Enforce role-based permissions on create/update/delete endpoints
 - [ ] Add cross-household authorization tests and sharing UX

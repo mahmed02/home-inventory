@@ -15,6 +15,7 @@ import { pool } from "../db/pool";
 import { env } from "../config/env";
 import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
 import { ItemRow } from "../types";
+import { resolvePrimaryHouseholdIdForUser } from "../auth/households";
 import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
 import { isUuid, normalizeOptionalText, readLimitOffset } from "../utils";
 
@@ -43,6 +44,8 @@ itemsRouter.post("/items", async (req, res) => {
   }
 
   try {
+    const householdId = await resolvePrimaryHouseholdIdForUser(ownerUserId);
+
     const location = await pool.query(
       `
       SELECT id
@@ -57,11 +60,19 @@ itemsRouter.post("/items", async (req, res) => {
 
     const result = await pool.query<ItemRow>(
       `
-      INSERT INTO items(name, description, keywords, location_id, image_url, owner_user_id)
-      VALUES ($1, $2, $3::text[], $4, $5, $6)
+      INSERT INTO items(
+        name,
+        description,
+        keywords,
+        location_id,
+        image_url,
+        owner_user_id,
+        household_id
+      )
+      VALUES ($1, $2, $3::text[], $4, $5, $6, $7)
       RETURNING *
       `,
-      [name, description, keywords, locationId, imageUrl, ownerUserId]
+      [name, description, keywords, locationId, imageUrl, ownerUserId, householdId]
     );
 
     return res.status(201).json(result.rows[0]);

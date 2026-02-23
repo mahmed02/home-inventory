@@ -8,6 +8,7 @@ import {
 } from "../middleware/http";
 import { asOptionalText, asOptionalUuid, asRequiredText } from "../middleware/validation";
 import { pool } from "../db/pool";
+import { resolvePrimaryHouseholdIdForUser } from "../auth/households";
 import { LocationRow } from "../types";
 import { ownerScopeSql, requestOwnerUserId } from "../auth/ownerScope";
 import { isUuid, normalizeOptionalText } from "../utils";
@@ -44,6 +45,8 @@ locationsRouter.post("/locations", async (req, res) => {
   }
 
   try {
+    const householdId = await resolvePrimaryHouseholdIdForUser(ownerUserId);
+
     if (parentId) {
       const parent = await pool.query(
         `
@@ -60,11 +63,20 @@ locationsRouter.post("/locations", async (req, res) => {
 
     const result = await pool.query<LocationRow>(
       `
-      INSERT INTO locations(name, code, type, parent_id, description, image_url, owner_user_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO locations(
+        name,
+        code,
+        type,
+        parent_id,
+        description,
+        image_url,
+        owner_user_id,
+        household_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
       `,
-      [name, code, type, parentId, description, imageUrl, ownerUserId]
+      [name, code, type, parentId, description, imageUrl, ownerUserId, householdId]
     );
 
     return res.status(201).json(result.rows[0]);

@@ -85,6 +85,9 @@ async function request(
 async function resetDatabase(): Promise<void> {
   await pool.query("DROP TABLE IF EXISTS items CASCADE");
   await pool.query("DROP TABLE IF EXISTS locations CASCADE");
+  await pool.query("DROP TABLE IF EXISTS household_invitations CASCADE");
+  await pool.query("DROP TABLE IF EXISTS household_members CASCADE");
+  await pool.query("DROP TABLE IF EXISTS households CASCADE");
   await pool.query("DROP TABLE IF EXISTS password_reset_tokens CASCADE");
   await pool.query("DROP TABLE IF EXISTS user_sessions CASCADE");
   await pool.query("DROP TABLE IF EXISTS users CASCADE");
@@ -96,6 +99,9 @@ async function resetDatabase(): Promise<void> {
 async function clearData(): Promise<void> {
   await pool.query("DELETE FROM items");
   await pool.query("DELETE FROM locations");
+  await pool.query("DELETE FROM household_invitations");
+  await pool.query("DELETE FROM household_members");
+  await pool.query("DELETE FROM households");
   await pool.query("DELETE FROM password_reset_tokens");
   await pool.query("DELETE FROM user_sessions");
   await pool.query("DELETE FROM users");
@@ -887,4 +893,153 @@ test("Owner-scoped access isolates inventory across users", async () => {
   const user2ExportJson = user2Export.json as { counts: { locations: number; items: number } };
   assert.equal(user2ExportJson.counts.locations, 1);
   assert.equal(user2ExportJson.counts.items, 0);
+});
+
+test("Household invite acceptance enforces owner controls and email matching", async () => {
+  const owner = await request("/auth/register", {
+    method: "POST",
+    body: { email: "hh-owner@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(owner.status, 201);
+  const ownerToken = (owner.json as { token: string }).token;
+
+  const invitee = await request("/auth/register", {
+    method: "POST",
+    body: { email: "hh-invitee@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(invitee.status, 201);
+  const inviteeToken = (invitee.json as { token: string }).token;
+
+  const outsider = await request("/auth/register", {
+    method: "POST",
+    body: { email: "hh-outsider@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(outsider.status, 201);
+  const outsiderToken = (outsider.json as { token: string }).token;
+
+  const ownerHouseholds = await request("/households", { token: ownerToken });
+  assert.equal(ownerHouseholds.status, 200);
+  const ownerHouseholdsJson = ownerHouseholds.json as {
+    households: Array<{ id: string; role: string }>;
+  };
+  assert.equal(ownerHouseholdsJson.households.length, 1);
+  assert.equal(ownerHouseholdsJson.households[0].role, "owner");
+  const householdId = ownerHouseholdsJson.households[0].id;
+
+  const nonMemberInviteAttempt = await request(`/households/${householdId}/invitations`, {
+    method: "POST",
+    token: inviteeToken,
+    body: { email: "someone@example.com", role: "viewer" },
+  });
+  assert.equal(nonMemberInviteAttempt.status, 404);
+
+  const invite = await request(`/households/${householdId}/invitations`, {
+    method: "POST",
+    token: ownerToken,
+    body: { email: "hh-invitee@example.com", role: "editor" },
+  });
+  assert.equal(invite.status, 201);
+  const inviteJson = invite.json as {
+    invitation: { id: string; household_id: string; email: string; role: string };
+    invitation_token: string;
+  };
+  assert.equal(inviteJson.invitation.household_id, householdId);
+  assert.equal(inviteJson.invitation.email, "hh-invitee@example.com");
+  assert.equal(inviteJson.invitation.role, "editor");
+  assert.ok(inviteJson.invitation_token.length > 20);
+
+  const duplicateInvite = await request(`/households/${householdId}/invitations`, {
+    method: "POST",
+    token: ownerToken,
+    body: { email: "hh-invitee@example.com", role: "viewer" },
+  });
+  assert.equal(duplicateInvite.status, 409);
+
+  const outsiderAccept = await request("/households/invitations/accept", {
+    method: "POST",
+    token: outsiderToken,
+    body: { token: inviteJson.invitation_token },
+  });
+  assert.equal(outsiderAccept.status, 403);
+
+  const inviteeAccept = await request("/households/invitations/accept", {
+    method: "POST",
+    token: inviteeToken,
+    body: { token: inviteJson.invitation_token },
+  });
+  assert.equal(inviteeAccept.status, 200);
+  assert.deepEqual(inviteeAccept.json, {
+    accepted: true,
+    household_id: householdId,
+    role: "editor",
+  });
+
+  const ownerMembers = await request(`/households/${householdId}/members`, { token: ownerToken });
+  assert.equal(ownerMembers.status, 200);
+  const ownerMembersJson = ownerMembers.json as {
+    members: Array<{ email: string; role: string }>;
+  };
+  assert.equal(ownerMembersJson.members.length, 2);
+  assert.ok(
+    ownerMembersJson.members.some(
+      (member) => member.email === "hh-invitee@example.com" && member.role === "editor"
+    )
+  );
+
+  const editorCannotInvite = await request(`/households/${householdId}/invitations`, {
+    method: "POST",
+    token: inviteeToken,
+    body: { email: "editor-cannot@example.com", role: "viewer" },
+  });
+  assert.equal(editorCannotInvite.status, 403);
+});
+
+test("Household invitation revoke invalidates pending token", async () => {
+  const owner = await request("/auth/register", {
+    method: "POST",
+    body: { email: "hh-revoke-owner@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(owner.status, 201);
+  const ownerToken = (owner.json as { token: string }).token;
+
+  const invitee = await request("/auth/register", {
+    method: "POST",
+    body: { email: "hh-revoke-invitee@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(invitee.status, 201);
+  const inviteeToken = (invitee.json as { token: string }).token;
+
+  const ownerHouseholds = await request("/households", { token: ownerToken });
+  assert.equal(ownerHouseholds.status, 200);
+  const householdId = (ownerHouseholds.json as { households: Array<{ id: string }> }).households[0]
+    .id;
+
+  const invite = await request(`/households/${householdId}/invitations`, {
+    method: "POST",
+    token: ownerToken,
+    body: { email: "hh-revoke-invitee@example.com", role: "viewer" },
+  });
+  assert.equal(invite.status, 201);
+  const inviteJson = invite.json as {
+    invitation: { id: string };
+    invitation_token: string;
+  };
+
+  const revoked = await request(
+    `/households/${householdId}/invitations/${inviteJson.invitation.id}`,
+    {
+      method: "DELETE",
+      token: ownerToken,
+    }
+  );
+  assert.equal(revoked.status, 200);
+  assert.deepEqual(revoked.json, { revoked: true });
+
+  const acceptRevoked = await request("/households/invitations/accept", {
+    method: "POST",
+    token: inviteeToken,
+    body: { token: inviteJson.invitation_token },
+  });
+  assert.equal(acceptRevoked.status, 400);
+  assert.deepEqual(acceptRevoked.json, { error: "Invalid or expired invitation token" });
 });

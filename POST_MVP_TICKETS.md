@@ -125,7 +125,7 @@ Status: `done`
 ## Phase 6.6 — Shared Household Access
 
 ## 6.6-01) Household Sharing ADR + Role Matrix
-Status: `todo`
+Status: `done`
 - Scope:
   - Define household model and permission roles (`owner`, `editor`, `viewer`).
   - Define ownership migration from `owner_user_id` to `household_id`.
@@ -133,7 +133,7 @@ Status: `todo`
   - ADR committed with role-per-endpoint matrix and migration order.
 
 ## 6.6-02) Households + Membership Schema Migration
-Status: `blocked`
+Status: `done`
 - Depends on: `6.6-01`
 - Scope:
   - Add `households`, `household_members`, and invitation records.
@@ -142,16 +142,17 @@ Status: `blocked`
   - Migrations apply cleanly and support at least one owner per household.
 
 ## 6.6-03) Invite + Accept API
-Status: `blocked`
+Status: `done`
 - Depends on: `6.6-02`
 - Scope:
   - Add owner invite create/revoke and member accept endpoints.
   - Add invitation token expiry and single-use handling.
 - Acceptance:
-  - Invited user can join household and immediately access shared inventory.
+  - Invited user can join household membership with a one-time invite token.
+  - Shared inventory data access is enabled in `6.6-04`.
 
 ## 6.6-04) Household-Scoped Access Refactor
-Status: `blocked`
+Status: `todo`
 - Depends on: `6.6-02`
 - Scope:
   - Refactor inventory reads/writes from user scope to household scope.
@@ -353,8 +354,8 @@ Status: `todo`
 
 ## Suggested Next Batch
 
-1. `6.6-01` Household Sharing ADR + Role Matrix
-2. `6.6-02` Households + Membership Schema Migration
-3. `6.6-03` Invite + Accept API
+1. `6.6-04` Household-Scoped Access Refactor
+2. `6.6-05` Sharing Authorization Test Matrix
+3. `6.6-06` Sharing UI (Invite + Members + Role Management)
 4. `6-01` Move Impact API
 5. `6-02` Move Confirmation UX
