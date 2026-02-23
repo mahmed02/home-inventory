@@ -112,6 +112,7 @@ For the full step-by-step runbook, use:
 - `DELETE /locations/:id`
 - `POST /items`
 - `GET /items/:id`
+- `GET /items/:id/history?from=&to=&limit=&offset=`
 - `GET /items?location_id=&limit=&offset=`
 - `PATCH /items/:id`
 - `DELETE /items/:id`
@@ -237,6 +238,7 @@ Notes:
 - `0007_add_password_reset_tokens.sql`
 - `0008_add_households_and_sharing.sql`
 - `0009_add_item_embeddings.sql`
+- `0010_add_movement_history.sql`
 
 ## Notes
 

@@ -253,6 +253,30 @@ button.danger {
   background: #fcfdfc;
 }
 
+.item-history-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fcfdfc;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.history-event {
+  align-items: flex-start;
+}
+
+.history-path {
+  font-family: Menlo, Monaco, monospace;
+  font-size: 12px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.history-arrow {
+  color: var(--muted);
+  margin: 0 4px;
+}
+
 .plus-btn {
   width: 42px;
   min-width: 42px;

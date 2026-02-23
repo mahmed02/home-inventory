@@ -275,6 +275,13 @@
         </div>
         <p id="itemEditorHint" class="hint">Select an item in the tree.</p>
         <p id="itemBreadcrumb" class="crumb"></p>
+        <section id="itemHistoryPanel" class="stack item-history-panel" hidden>
+          <div class="panel-head">
+            <h3>Movement History</h3>
+            <button id="refreshItemHistoryBtn" type="button">Refresh</button>
+          </div>
+          <ul id="itemHistoryList" class="management-list"></ul>
+        </section>
         <form id="editItemForm" class="stack" hidden>
           <input id="editItemName" type="text" placeholder="Name" required />
           <input id="editItemDescription" type="text" placeholder="Description" />

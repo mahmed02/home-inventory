@@ -1,10 +1,12 @@
 # Home Inventory System — Execution Roadmap
 
-This version tracks implementation in three views:
+Last updated: **2026-02-23**
 
-1. Completed (current state)
-2. Remaining MVP gap
+This roadmap tracks:
+1. Completed capabilities
+2. MVP gap status
 3. Post-MVP backlog
+4. Recommended next task sequence
 
 ---
 
@@ -61,57 +63,72 @@ This version tracks implementation in three views:
 - [x] Modal action launcher (`+`) for create/edit flows
 - [x] Dev seed button wired to backend (`POST /dev/seed`)
 
-### Phase 5 — Photo Support (partial)
+### Phase 5 — Photo Support
 - [x] `image_url` persisted/updated for locations and items
 - [x] Image URL fields in create/edit forms
 - [x] Thumbnail rendering in search results and tree items
 - [x] Presigned S3 upload endpoint (`POST /uploads/presign`)
 - [x] UI upload buttons wired for create/edit item/location
+- [x] Server-side thumbnail generation
 - [x] End-to-end upload validated in AWS (presign + PUT + render)
 
-### Phase 5.5 — First Deployment Validation (private)
+### Phase 5.5 — Staging + HTTPS Validation
 - [x] AWS EC2 + RDS + S3 environment created
-- [x] Migrations executed on EC2 against RDS
 - [x] API process managed with PM2
-- [x] Private network validation over Tailscale
-- [x] Current private staging endpoint documented: `http://100.84.48.109:4000` (Tailscale)
-- [x] Smoke checks passed (`/health`, search, Siri)
+- [x] Private validation over Tailscale (`http://100.84.48.109:4000`)
+- [x] Public staging domain + HTTPS configured (`https://staging.myhomeinventory.net`)
+- [x] Cloudflare DNS hooked to AWS target
+- [x] Smoke checks passed on staging (`/health`, search, Siri, semantic)
+
+### Phase 5.6 — Deploy Pipeline Hardening
+- [x] GitHub Actions deploy workflow integrated with AWS SSM + OIDC
+- [x] Workflow updated to run remote deploy as app user (not root deploy flow)
+- [x] Deploy script hardened with startup health retry/backoff
+- [x] Deploy script uses unique temp files + cleanup trap
+- [x] Deploy script normalizes API dir ownership and clears stale `node_modules` before `npm ci`
+
+### Phase 6 — Container Movement Optimization
+- [x] Location move confirmation UX and bulk impact visibility
+- [x] Optional move preview (before/after path for affected items)
+
+### Phase 6.5 — Multi-User Accounts + Inventory Ownership
+- [x] Users table + account registration/login flow
+- [x] Session auth + password reset flow
+- [x] Ownership field added to inventory entities
+- [x] Owner-scoped authorization enforced
+- [x] Authorization test matrix added (cross-user denial)
+- [x] Legacy single-inventory data migrated to initial owner
+
+### Phase 6.6 — Shared Household Access
+- [x] `households` + `household_members` roles (`owner`, `editor`, `viewer`)
+- [x] Invite + accept membership flow
+- [x] Household-scoped authorization model
+- [x] Role-based permissions on create/update/delete
+- [x] Cross-household auth tests
+- [x] Sharing UX (invite/member/role management)
+
+### Phase 7 — Semantic Search (Major Advancement)
+- [x] Search provider abstraction introduced
+- [x] Pinecone integrated semantic backend wired
+- [x] Household-aware semantic retrieval with lexical/semantic/hybrid modes
+- [x] Resumable reindex/backfill job for item indexing
+- [x] Search UI toggle for lexical/hybrid/semantic
+- [x] Relevance regression checks in CI
+- [x] Legacy in-app Postgres semantic runtime path removed (Pinecone-first runtime)
+
+### Phase 8 — Natural Language Interface (Major Advancement)
+- [x] Conversational intent/query orchestrator for inventory questions
+- [x] Chat-style UI experience
+- [x] Siri lookup aligned to conversational answer path
+- [x] Safer fallback behavior and unsupported-action guardrails
 
 ---
 
-## 2) Remaining MVP Gap
+## 2) MVP Gap Status
 
-These are the remaining tasks to consider MVP fully hardened for solo/household use.
-
-### Platform / Ops
-- [x] Decide hosting target (AWS stack vs Vercel/Supabase)
-- [x] Add baseline lint/format config and CI checks
-- [x] Add deployment checklist (env vars, DB migration runbook, backup schedule)
-- [x] Add public staging domain + HTTPS (ACM + ALB/Nginx + DNS)
-- [x] Hook up Cloudflare DNS (`staging.myhomeinventory.net`) to AWS target
-- [x] Run smoke checks on HTTPS staging URL (including `CHECK_UPLOADS=true`)
-- [x] Add production cutover + rollback rehearsal notes after first HTTPS deploy
-
-### Data / Quality
-- [x] Add migration test for unique `locations.code`
-- [x] Expand API tests to include location path endpoint and delete edge cases
-- [x] Add test for `/dev/seed` gating behavior (`ENABLE_DEV_ROUTES`)
-
-### API / UX
-- [x] Document Siri Shortcut setup flow clearly (step-by-step)
-- [x] Add breadcrumb display in the interactive explorer (UI-level)
-- [x] Standardize response envelopes if desired (currently mixed direct object/list responses)
-
-### Backup / Safety
-- [x] Add import dry-run mode (`validate_only=true`)
-- [x] Add optional id remap mode for merging into non-empty inventories (future-safe)
-- [x] Automate scheduled backup export and retention policy
-- [x] Run one restore drill from backup JSON in staging
-
-### Photo Support (to complete Phase 5)
-- [x] Add direct file upload for item/location images
-- [x] Add storage integration (S3/Supabase/Cloudinary)
-- [x] Add server-side thumbnail generation pipeline
+### MVP hardening status: **closed**
+- Core MVP + staging HTTPS + backups + photo uploads + multi-user household sharing are complete.
+- Current effort focus is now **Post-MVP Phases 9+**.
 
 ---
 
@@ -119,42 +136,11 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 
 Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICKETS.md`
 
-### Phase 6 — Container Movement Optimization
-- [x] Location move confirmation UX and bulk impact visibility
-- [x] Optional move preview (before/after path for affected items)
-
-### Phase 6.5 — Multi-User Accounts + Inventory Ownership
-- [x] Add `users` table and account registration/login flow
-- [x] Add authenticated session/JWT model and password reset path
-- [x] Add ownership field to inventory entities (user or tenant scope)
-- [x] Scope all reads/writes by authenticated owner
-- [x] Add authorization tests to block cross-user access
-- [x] Migrate existing single-inventory data to an initial owner
-
-### Phase 6.6 — Shared Household Access (Queued After 6.5 Completion)
-- [x] Add `households` and `household_members` with roles (`owner`, `editor`, `viewer`)
-- [x] Add invite + accept flow for owner-granted household membership
-- [x] Refactor inventory ownership from user-only scope to household scope
-- [x] Enforce role-based permissions on create/update/delete endpoints
-- [x] Add cross-household authorization tests
-- [x] Add sharing UX
-
-### Phase 7 — Semantic Search
-- [x] Add embeddings column/store
-- [x] Generate embeddings on create/update
-- [x] Resumable backfill/reindex job for existing items
-- [x] Similarity query + ranking
-- [x] Search UX toggle for lexical/hybrid/semantic modes
-- [x] Relevance regression checks in CI
-
-### Phase 8 — Natural Language Interface
-- [x] Chat-style query input
-- [x] Retrieval + response formatting for conversational lookup
-
 ### Phase 9 — Movement History
-- [ ] `movement_history` table
-- [ ] Item move event logging
-- [ ] History view in UI
+- [x] `movement_history` table
+- [x] Item move event logging
+- [x] History query API (paginated + optional date range)
+- [x] History view in UI
 
 ### Phase 10 — Physical-Digital Sync
 - [ ] QR generation for locations
@@ -163,17 +149,32 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 
 ### Phase 11 — Mobile App + Storage Modes
 - [ ] Define mobile stack (`React Native` or `Flutter`) and baseline app architecture
-- [ ] Local-only mode (single-user):
-- [ ] Store full inventory in on-device DB (SQLite/Realm)
-- [ ] Disable multi-user sync features in local-only mode
-- [ ] Provide local export/import backup flow for device migration
-- [ ] Cloud mode with offline support:
-- [ ] Use cloud API as source of truth when online
-- [ ] Keep local on-device cache for offline read/write
-- [ ] Queue offline mutations and sync/reconcile when internet returns
-- [ ] Conflict strategy for cloud mode (last-write-wins for MVP, upgrade later if needed)
-- [ ] User-facing mode toggle and clear mode status indicator (`Local Only` vs `Cloud Sync`)
-- [ ] Security baseline for mobile storage (at-rest encryption + secure token/key handling)
+- [ ] Local-only mode (single-user): on-device DB + export/import
+- [ ] Cloud mode with offline support: cached reads/writes + mutation queue + reconciliation
+- [ ] Conflict strategy for cloud mode (MVP: last-write-wins)
+- [ ] Mode toggle UI (`Local Only` vs `Cloud Sync`)
+- [ ] Mobile security baseline (at-rest encryption + secure token/key handling)
+
+---
+
+## 4) Next Tasks (Recommended Order)
+
+### Queued Now
+1. `10-01` QR code generation for locations
+2. `10-02` Scan-to-view endpoint + routing
+3. `10-03` Verification mode (expected vs actual)
+
+### Next Batch (immediately actionable)
+1. `10-01` QR code generation for locations
+2. `10-02` Scan-to-view endpoint + routing
+3. `10-03` Verification mode (expected vs actual)
+4. `11-01` Mobile architecture ADR + bootstrap
+5. `11-02` Shared API client + mobile auth integration
+
+### Follow-up Batch
+1. `11-01` Mobile architecture ADR + bootstrap
+2. `11-02` Shared API client + mobile auth integration
+3. `11-03` Local-only mode data layer
 
 ---
 
@@ -182,7 +183,7 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - Milestone A: Backend MVP Complete (Phases 1–3)
 - Milestone B: Product MVP Usable (Phase 4)
 - Milestone C: Photo Workflow Complete (Phase 5)
-- Milestone D: Intelligent Search (Phases 7–8)
+- Milestone D: Intelligent Search + NLI Complete (Phases 7–8)
 - Milestone E: Advanced Control System (Phases 9–10)
 
 ---

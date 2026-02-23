@@ -71,6 +71,9 @@ const locationEditorHint = document.getElementById("locationEditorHint");
 const itemEditorHint = document.getElementById("itemEditorHint");
 const locationBreadcrumbEl = document.getElementById("locationBreadcrumb");
 const itemBreadcrumbEl = document.getElementById("itemBreadcrumb");
+const itemHistoryPanelEl = document.getElementById("itemHistoryPanel");
+const itemHistoryListEl = document.getElementById("itemHistoryList");
+const refreshItemHistoryBtn = document.getElementById("refreshItemHistoryBtn");
 
 const locNameInput = document.getElementById("locName");
 const locCodeInput = document.getElementById("locCode");
@@ -128,6 +131,7 @@ let activeHouseholdId = "";
 let activeHouseholdRole = "";
 let refreshingHouseholds = false;
 let pendingLocationMove = null;
+let itemHistoryRequestSeq = 0;
 let chatHistory = [];
 const MAX_CHAT_HISTORY = 20;
 
@@ -496,6 +500,94 @@ function formatScore(value) {
     return null;
   }
   return value.toFixed(3);
+}
+
+function formatTimestamp(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value || "Unknown time";
+  }
+  return parsed.toLocaleString();
+}
+
+function hideItemHistoryPanel() {
+  itemHistoryRequestSeq += 1;
+  if (!itemHistoryPanelEl || !itemHistoryListEl) {
+    return;
+  }
+  itemHistoryPanelEl.hidden = true;
+  itemHistoryListEl.innerHTML = "";
+}
+
+function showItemHistoryMessage(message) {
+  if (!itemHistoryPanelEl || !itemHistoryListEl) {
+    return;
+  }
+  itemHistoryPanelEl.hidden = false;
+  itemHistoryListEl.innerHTML = `<li class="management-empty">${escapeHtml(message)}</li>`;
+}
+
+function renderItemHistory(events) {
+  if (!itemHistoryPanelEl || !itemHistoryListEl) {
+    return;
+  }
+  itemHistoryPanelEl.hidden = false;
+
+  if (!Array.isArray(events) || events.length === 0) {
+    itemHistoryListEl.innerHTML =
+      '<li class="management-empty">No movement history recorded for this item.</li>';
+    return;
+  }
+
+  itemHistoryListEl.innerHTML = events
+    .map((event) => {
+      const fromPath = event.from_location_path || "(unknown)";
+      const toPath = event.to_location_path || "(unknown)";
+      const movedBy =
+        event.moved_by && typeof event.moved_by === "object"
+          ? event.moved_by.display_name || event.moved_by.email || "Authenticated user"
+          : "System";
+      const source = event.source || "unknown";
+
+      return `
+        <li class="management-item history-event">
+          <div class="management-main">
+            <div class="management-title">${escapeHtml(formatTimestamp(event.created_at || ""))}</div>
+            <div class="history-path">
+              ${escapeHtml(fromPath)}
+              <span class="history-arrow">-></span>
+              ${escapeHtml(toPath)}
+            </div>
+            <div class="management-subtle">Moved by ${escapeHtml(movedBy)} · source ${escapeHtml(source)}</div>
+          </div>
+        </li>
+      `;
+    })
+    .join("");
+}
+
+async function loadItemHistory(itemId) {
+  if (!itemHistoryPanelEl || !itemHistoryListEl || !itemId) {
+    return;
+  }
+
+  const requestSeq = ++itemHistoryRequestSeq;
+  showItemHistoryMessage("Loading movement history...");
+
+  try {
+    const history = await fetchJson(`/items/${encodeURIComponent(itemId)}/history?limit=50&offset=0`);
+    if (requestSeq !== itemHistoryRequestSeq || selectedItemId !== itemId) {
+      return;
+    }
+
+    const events = history && Array.isArray(history.events) ? history.events : [];
+    renderItemHistory(events);
+  } catch (error) {
+    if (requestSeq !== itemHistoryRequestSeq || selectedItemId !== itemId) {
+      return;
+    }
+    showItemHistoryMessage(`Unable to load movement history: ${error.message}`);
+  }
 }
 
 function renderChatHistory() {
@@ -896,6 +988,7 @@ function hideEditors() {
 
   editLocationForm.hidden = true;
   editItemForm.hidden = true;
+  hideItemHistoryPanel();
   locationEditorHint.textContent = "Select a location in the tree.";
   itemEditorHint.textContent = "Select an item in the tree.";
   locationBreadcrumbEl.textContent = "";
@@ -915,6 +1008,7 @@ function selectLocation(locationId) {
   selectedItemId = null;
 
   editItemForm.hidden = true;
+  hideItemHistoryPanel();
   itemEditorHint.textContent = "Select an item in the tree.";
   itemBreadcrumbEl.textContent = "";
 
@@ -947,6 +1041,7 @@ function selectItem(itemId) {
 
   const item = itemMap.get(itemId);
   if (!item) {
+    hideItemHistoryPanel();
     itemEditorHint.textContent = "Item not found.";
     itemBreadcrumbEl.textContent = "";
     return;
@@ -962,6 +1057,7 @@ function selectItem(itemId) {
 
   syncLocationSelectors();
   editItemLocationSelect.value = item.location_id || "";
+  void loadItemHistory(item.id);
   updateActionState();
 
   renderTree();
@@ -1526,6 +1622,16 @@ deleteItemBtn.addEventListener("click", async () => {
 refreshTreeBtn.addEventListener("click", () => {
   void refreshInventoryTree();
 });
+
+if (refreshItemHistoryBtn) {
+  refreshItemHistoryBtn.addEventListener("click", () => {
+    if (!selectedItemId) {
+      setStatus("Select an item first.");
+      return;
+    }
+    void loadItemHistory(selectedItemId);
+  });
+}
 
 refreshHouseholdsBtn.addEventListener("click", async () => {
   refreshHouseholdsBtn.disabled = true;

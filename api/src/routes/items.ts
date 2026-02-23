@@ -12,6 +12,7 @@ import {
   asRequiredUuid,
 } from "../middleware/validation";
 import { pool } from "../db/pool";
+import { recordItemMovement } from "../db/movementHistory";
 import { env } from "../config/env";
 import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
 import { deleteItemEmbedding, upsertItemEmbedding } from "../search/itemEmbeddings";
@@ -56,6 +57,22 @@ function dbError(error: unknown, res: Response) {
   }
 
   return sendInternalError(error, res);
+}
+
+function parseOptionalTimestamp(
+  value: unknown
+): { ok: true; value: string | null } | { ok: false; message: string } {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) {
+    return { ok: true, value: null };
+  }
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return { ok: false, message: "from/to must be a valid ISO date or datetime" };
+  }
+
+  return { ok: true, value: parsed.toISOString() };
 }
 
 itemsRouter.post("/items", async (req, res) => {
@@ -149,6 +166,168 @@ itemsRouter.get("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     }
 
     return res.status(200).json(result.rows[0]);
+  } catch (error) {
+    return sendInternalError(error, res);
+  }
+});
+
+itemsRouter.get("/items/:id([0-9a-fA-F-]{36})/history", async (req, res) => {
+  const id = req.params.id;
+  if (!isUuid(id)) {
+    return sendValidationError(res, "Invalid item id");
+  }
+
+  const fromParsed = parseOptionalTimestamp(req.query.from);
+  if (!fromParsed.ok) {
+    return sendValidationError(res, fromParsed.message);
+  }
+  const toParsed = parseOptionalTimestamp(req.query.to);
+  if (!toParsed.ok) {
+    return sendValidationError(res, toParsed.message);
+  }
+
+  if (fromParsed.value && toParsed.value && fromParsed.value > toParsed.value) {
+    return sendValidationError(res, "from must be less than or equal to to");
+  }
+
+  const { limit, offset } = readLimitOffset(req);
+
+  try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
+    const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const itemExists = await pool.query(
+      `
+      SELECT id
+      FROM items
+      WHERE id = $1 AND ${itemScope.sql}
+      `,
+      [id, ...itemScope.params]
+    );
+    if (itemExists.rowCount === 0) {
+      return sendNotFound(res, "Item not found");
+    }
+
+    const historyScope = inventoryScopeSql(scope, "mh.household_id", "mh.owner_user_id", 2);
+    const rootScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const recursiveScope = inventoryScopeSql(scope, "l.household_id", "l.owner_user_id", 2);
+
+    const whereParts = ["mh.item_id = $1", historyScope.sql];
+    const values: Array<string | number | null> = [id, ...historyScope.params];
+
+    if (fromParsed.value) {
+      values.push(fromParsed.value);
+      whereParts.push(`mh.created_at >= $${values.length}`);
+    }
+    if (toParsed.value) {
+      values.push(toParsed.value);
+      whereParts.push(`mh.created_at <= $${values.length}`);
+    }
+
+    values.push(limit, offset);
+    const limitParam = `$${values.length - 1}`;
+    const offsetParam = `$${values.length}`;
+
+    const history = await pool.query<{
+      id: string;
+      item_id: string;
+      from_location_id: string;
+      to_location_id: string;
+      from_location_path: string | null;
+      to_location_path: string | null;
+      moved_by_user_id: string | null;
+      moved_by_email: string | null;
+      moved_by_display_name: string | null;
+      source: string;
+      created_at: string;
+      total_count: string;
+    }>(
+      `
+      WITH RECURSIVE location_paths AS (
+        SELECT id, parent_id, name, name::text AS path
+        FROM locations
+        WHERE parent_id IS NULL AND ${rootScope.sql}
+        UNION ALL
+        SELECT l.id, l.parent_id, l.name, lp.path || ' > ' || l.name
+        FROM locations l
+        JOIN location_paths lp ON l.parent_id = lp.id
+        WHERE ${recursiveScope.sql}
+      ),
+      filtered AS (
+        SELECT
+          mh.id,
+          mh.item_id,
+          mh.from_location_id,
+          mh.to_location_id,
+          from_lp.path AS from_location_path,
+          to_lp.path AS to_location_path,
+          mh.moved_by_user_id,
+          u.email AS moved_by_email,
+          u.display_name AS moved_by_display_name,
+          mh.source,
+          mh.created_at,
+          COUNT(*) OVER()::text AS total_count
+        FROM movement_history mh
+        LEFT JOIN location_paths from_lp ON from_lp.id = mh.from_location_id
+        LEFT JOIN location_paths to_lp ON to_lp.id = mh.to_location_id
+        LEFT JOIN users u ON u.id = mh.moved_by_user_id
+        WHERE ${whereParts.join(" AND ")}
+      )
+      SELECT
+        id,
+        item_id,
+        from_location_id,
+        to_location_id,
+        from_location_path,
+        to_location_path,
+        moved_by_user_id,
+        moved_by_email,
+        moved_by_display_name,
+        source,
+        created_at,
+        total_count
+      FROM filtered
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${limitParam}
+      OFFSET ${offsetParam}
+      `,
+      values
+    );
+
+    const total = Number(history.rows[0]?.total_count ?? "0");
+    const events = history.rows.map((row) => ({
+      id: row.id,
+      item_id: row.item_id,
+      from_location_id: row.from_location_id,
+      to_location_id: row.to_location_id,
+      from_location_path: row.from_location_path,
+      to_location_path: row.to_location_path,
+      moved_by_user_id: row.moved_by_user_id,
+      moved_by:
+        row.moved_by_user_id
+          ? {
+              id: row.moved_by_user_id,
+              email: row.moved_by_email,
+              display_name: row.moved_by_display_name,
+            }
+          : null,
+      source: row.source,
+      created_at: row.created_at,
+    }));
+
+    return res.status(200).json({
+      item_id: id,
+      events,
+      total,
+      limit,
+      offset,
+      order: "desc",
+      from: fromParsed.value,
+      to: toParsed.value,
+    });
   } catch (error) {
     return sendInternalError(error, res);
   }
@@ -276,6 +455,25 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
       }
     }
 
+    const currentItemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const currentItem = await client.query<
+      Pick<ItemRow, "id" | "location_id" | "owner_user_id" | "household_id">
+    >(
+      `
+      SELECT id, location_id, owner_user_id, household_id
+      FROM items
+      WHERE id = $1
+        AND ${currentItemScope.sql}
+      FOR UPDATE
+      `,
+      [id, ...currentItemScope.params]
+    );
+
+    if (currentItem.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return sendNotFound(res, "Item not found");
+    }
+
     const setClause = updates.map((entry, index) => `${entry.key} = $${index + 1}`).join(", ");
 
     const values = updates.map((entry) => entry.value);
@@ -295,6 +493,20 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     if (result.rowCount === 0) {
       await client.query("ROLLBACK");
       return sendNotFound(res, "Item not found");
+    }
+
+    const previous = currentItem.rows[0];
+    const next = result.rows[0];
+    if (pendingLocationId && previous.location_id !== next.location_id) {
+      await recordItemMovement(client, {
+        itemId: next.id,
+        fromLocationId: previous.location_id,
+        toLocationId: next.location_id,
+        movedByUserId: req.authUserId ?? null,
+        ownerUserId: next.owner_user_id ?? previous.owner_user_id ?? null,
+        householdId: next.household_id ?? previous.household_id ?? null,
+        source: "api.items.patch",
+      });
     }
 
     await upsertItemEmbedding(result.rows[0], client);

@@ -83,6 +83,7 @@ async function request(
 }
 
 async function resetDatabase(): Promise<void> {
+  await pool.query("DROP TABLE IF EXISTS movement_history CASCADE");
   await pool.query("DROP TABLE IF EXISTS item_embeddings CASCADE");
   await pool.query("DROP TABLE IF EXISTS items CASCADE");
   await pool.query("DROP TABLE IF EXISTS locations CASCADE");
@@ -98,6 +99,7 @@ async function resetDatabase(): Promise<void> {
 }
 
 async function clearData(): Promise<void> {
+  await pool.query("DELETE FROM movement_history");
   await pool.query("DELETE FROM item_embeddings");
   await pool.query("DELETE FROM items");
   await pool.query("DELETE FROM locations");
@@ -1154,11 +1156,237 @@ test("PATCH/DELETE item flow works end-to-end", async () => {
   assert.equal(updatedJson.location_id, basementId);
   assert.deepEqual(updatedJson.keywords, ["tool", "driver", "m18"]);
 
+  const movementHistory = await pool.query<{
+    item_id: string;
+    from_location_id: string;
+    to_location_id: string;
+    moved_by_user_id: string | null;
+    source: string;
+    created_at: string;
+  }>(
+    `
+    SELECT item_id, from_location_id, to_location_id, moved_by_user_id, source, created_at
+    FROM movement_history
+    WHERE item_id = $1
+    ORDER BY created_at DESC
+    `,
+    [itemId]
+  );
+  assert.equal(movementHistory.rowCount, 1);
+  assert.equal(movementHistory.rows[0].item_id, itemId);
+  assert.equal(movementHistory.rows[0].from_location_id, garageId);
+  assert.equal(movementHistory.rows[0].to_location_id, basementId);
+  assert.equal(movementHistory.rows[0].moved_by_user_id, null);
+  assert.equal(movementHistory.rows[0].source, "api.items.patch");
+  assert.ok(typeof movementHistory.rows[0].created_at === "string");
+
   const deleted = await request(`/items/${itemId}`, { method: "DELETE" });
   assert.equal(deleted.status, 204);
 
   const afterDelete = await request(`/items/${itemId}`);
   assert.equal(afterDelete.status, 404);
+});
+
+test("GET /items/:id/history returns chronological events with optional date filtering", async () => {
+  const root = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: rootId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const attic = await request("/locations", {
+    method: "POST",
+    body: { name: "Attic", code: "A1", type: "room", parent_id: rootId },
+  });
+  assert.equal(attic.status, 201);
+  const atticId = (attic.json as { id: string }).id;
+
+  const basement = await request("/locations", {
+    method: "POST",
+    body: { name: "Basement", code: "B1", type: "room", parent_id: rootId },
+  });
+  assert.equal(basement.status, 201);
+  const basementId = (basement.json as { id: string }).id;
+
+  const item = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Sledge Hammer",
+      keywords: ["tool", "hammer"],
+      location_id: garageId,
+    },
+  });
+  assert.equal(item.status, 201);
+  const itemId = (item.json as { id: string }).id;
+
+  const moveToAttic = await request(`/items/${itemId}`, {
+    method: "PATCH",
+    body: { location_id: atticId },
+  });
+  assert.equal(moveToAttic.status, 200);
+
+  const moveToBasement = await request(`/items/${itemId}`, {
+    method: "PATCH",
+    body: { location_id: basementId },
+  });
+  assert.equal(moveToBasement.status, 200);
+
+  await pool.query(
+    `
+    UPDATE movement_history
+    SET created_at = $2::timestamptz
+    WHERE item_id = $1 AND from_location_id = $3 AND to_location_id = $4
+    `,
+    [itemId, "2026-01-01T00:00:00.000Z", garageId, atticId]
+  );
+  await pool.query(
+    `
+    UPDATE movement_history
+    SET created_at = $2::timestamptz
+    WHERE item_id = $1 AND from_location_id = $3 AND to_location_id = $4
+    `,
+    [itemId, "2026-01-02T00:00:00.000Z", atticId, basementId]
+  );
+
+  const history = await request(`/items/${itemId}/history?limit=10&offset=0`);
+  assert.equal(history.status, 200);
+
+  const historyJson = history.json as {
+    item_id: string;
+    total: number;
+    limit: number;
+    offset: number;
+    order: string;
+    from: string | null;
+    to: string | null;
+    events: Array<{
+      from_location_id: string;
+      to_location_id: string;
+      from_location_path: string | null;
+      to_location_path: string | null;
+      source: string;
+      created_at: string;
+    }>;
+  };
+
+  assert.equal(historyJson.item_id, itemId);
+  assert.equal(historyJson.total, 2);
+  assert.equal(historyJson.limit, 10);
+  assert.equal(historyJson.offset, 0);
+  assert.equal(historyJson.order, "desc");
+  assert.equal(historyJson.from, null);
+  assert.equal(historyJson.to, null);
+  assert.equal(historyJson.events.length, 2);
+  assert.equal(historyJson.events[0].from_location_id, atticId);
+  assert.equal(historyJson.events[0].to_location_id, basementId);
+  assert.match(historyJson.events[0].from_location_path ?? "", /^House > Attic$/);
+  assert.match(historyJson.events[0].to_location_path ?? "", /^House > Basement$/);
+  assert.equal(historyJson.events[0].source, "api.items.patch");
+  assert.equal(historyJson.events[1].from_location_id, garageId);
+  assert.equal(historyJson.events[1].to_location_id, atticId);
+  assert.match(historyJson.events[1].from_location_path ?? "", /^House > Garage$/);
+  assert.match(historyJson.events[1].to_location_path ?? "", /^House > Attic$/);
+  assert.ok(historyJson.events[0].created_at >= historyJson.events[1].created_at);
+
+  const filtered = await request(
+    `/items/${itemId}/history?from=${encodeURIComponent("2026-01-02T00:00:00.000Z")}&limit=10&offset=0`
+  );
+  assert.equal(filtered.status, 200);
+  const filteredJson = filtered.json as {
+    total: number;
+    from: string | null;
+    events: Array<{ to_location_id: string }>;
+  };
+  assert.equal(filteredJson.total, 1);
+  assert.equal(filteredJson.events.length, 1);
+  assert.equal(filteredJson.events[0].to_location_id, basementId);
+  assert.equal(filteredJson.from, "2026-01-02T00:00:00.000Z");
+
+  const invalidRange = await request(
+    `/items/${itemId}/history?from=${encodeURIComponent("2026-01-03T00:00:00.000Z")}&to=${encodeURIComponent("2026-01-01T00:00:00.000Z")}`
+  );
+  assert.equal(invalidRange.status, 400);
+  assert.deepEqual(invalidRange.json, { error: "from must be less than or equal to to" });
+});
+
+test("GET /items/:id/history enforces inventory scope", async () => {
+  const owner = await request("/auth/register", {
+    method: "POST",
+    body: { email: "history-owner@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(owner.status, 201);
+  const ownerToken = (owner.json as { token: string }).token;
+
+  const outsider = await request("/auth/register", {
+    method: "POST",
+    body: { email: "history-outsider@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(outsider.status, 201);
+  const outsiderToken = (outsider.json as { token: string }).token;
+
+  const root = await request("/locations", {
+    method: "POST",
+    token: ownerToken,
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    token: ownerToken,
+    body: { name: "Garage", code: "G1", type: "room", parent_id: rootId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const shed = await request("/locations", {
+    method: "POST",
+    token: ownerToken,
+    body: { name: "Shed", code: "S1", type: "room", parent_id: rootId },
+  });
+  assert.equal(shed.status, 201);
+  const shedId = (shed.json as { id: string }).id;
+
+  const item = await request("/items", {
+    method: "POST",
+    token: ownerToken,
+    body: {
+      name: "Leaf Blower",
+      keywords: ["yard"],
+      location_id: garageId,
+    },
+  });
+  assert.equal(item.status, 201);
+  const itemId = (item.json as { id: string }).id;
+
+  const moved = await request(`/items/${itemId}`, {
+    method: "PATCH",
+    token: ownerToken,
+    body: { location_id: shedId },
+  });
+  assert.equal(moved.status, 200);
+
+  const ownerHistory = await request(`/items/${itemId}/history`, {
+    token: ownerToken,
+  });
+  assert.equal(ownerHistory.status, 200);
+  const ownerHistoryJson = ownerHistory.json as { total: number };
+  assert.equal(ownerHistoryJson.total, 1);
+
+  const outsiderHistory = await request(`/items/${itemId}/history`, {
+    token: outsiderToken,
+  });
+  assert.equal(outsiderHistory.status, 404);
+  assert.deepEqual(outsiderHistory.json, { error: "Item not found" });
 });
 
 test("Embeddings reindex supports chunked resume and full reindex", async () => {
@@ -1841,7 +2069,9 @@ test("Household members can collaborate within shared household scope", async ()
     body: { email: "collab-editor@example.com", password: "SuperSecret123!" },
   });
   assert.equal(editor.status, 201);
-  const editorToken = (editor.json as { token: string }).token;
+  const editorJson = editor.json as { token: string; user: { id: string } };
+  const editorToken = editorJson.token;
+  const editorUserId = editorJson.user.id;
 
   const ownerHouseholds = await request("/households", { token: ownerToken });
   assert.equal(ownerHouseholds.status, 200);
@@ -1873,6 +2103,15 @@ test("Household members can collaborate within shared household scope", async ()
   assert.equal(root.status, 201);
   const rootId = (root.json as { id: string }).id;
 
+  const garage = await request("/locations", {
+    method: "POST",
+    token: ownerToken,
+    headers: sharedHeader,
+    body: { name: "Shared Garage", code: "SH1-G1", type: "room", parent_id: rootId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
   const createdItem = await request("/items", {
     method: "POST",
     token: ownerToken,
@@ -1903,6 +2142,36 @@ test("Household members can collaborate within shared household scope", async ()
   });
   assert.equal(editorUpdatesShared.status, 200);
   assert.equal((editorUpdatesShared.json as { name: string }).name, "Shared Ladder v2");
+
+  const editorMovesShared = await request(`/items/${itemId}`, {
+    method: "PATCH",
+    token: editorToken,
+    headers: sharedHeader,
+    body: { location_id: garageId },
+  });
+  assert.equal(editorMovesShared.status, 200);
+  assert.equal((editorMovesShared.json as { location_id: string }).location_id, garageId);
+
+  const movementHistory = await pool.query<{
+    from_location_id: string;
+    to_location_id: string;
+    moved_by_user_id: string | null;
+    household_id: string | null;
+  }>(
+    `
+    SELECT from_location_id, to_location_id, moved_by_user_id, household_id
+    FROM movement_history
+    WHERE item_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+    [itemId]
+  );
+  assert.equal(movementHistory.rowCount, 1);
+  assert.equal(movementHistory.rows[0].from_location_id, rootId);
+  assert.equal(movementHistory.rows[0].to_location_id, garageId);
+  assert.equal(movementHistory.rows[0].moved_by_user_id, editorUserId);
+  assert.equal(movementHistory.rows[0].household_id, sharedHouseholdId);
 
   const editorCreatesShared = await request("/items", {
     method: "POST",

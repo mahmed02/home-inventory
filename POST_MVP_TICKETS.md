@@ -15,6 +15,12 @@ Ticket status values:
 3. Keep one migration-focused ticket per PR where possible.
 4. Start Phase 6.6 (shared households) only after open 6.5 tickets are complete.
 
+## Active Queue (Current)
+
+1. `10-01` QR Code Generation for Locations (`todo`) — next up
+2. `10-02` Scan-to-View Endpoint + Routing (`todo`) — depends on `10-01`
+3. `10-03` Verification Mode (`todo`) — depends on `10-02`
+
 ---
 
 ## Phase 6 — Container Movement Optimization
@@ -255,14 +261,14 @@ Status: `done`
 ## Phase 9 — Movement History
 
 ## 9-01) Movement History Schema + Write Path
-Status: `todo`
+Status: `done`
 - Scope:
   - Add `movement_history` table and write events on move actions.
 - Acceptance:
   - Every item move writes one audit event with actor and timestamps.
 
 ## 9-02) History Query API
-Status: `todo`
+Status: `done`
 - Depends on: `9-01`
 - Scope:
   - Add paginated history endpoint by item and optional date range.
@@ -270,7 +276,7 @@ Status: `todo`
   - API returns chronologically ordered movement events.
 
 ## 9-03) History Timeline UI
-Status: `todo`
+Status: `done`
 - Depends on: `9-02`
 - Scope:
   - Add item history panel showing moves and path transitions.
@@ -354,8 +360,8 @@ Status: `todo`
 
 ## Suggested Next Batch
 
-1. `7-01` Embeddings Store + Provider Integration
-2. `7-02` Backfill + Reindex Job
-3. `7-03` Semantic Search API
-4. `7-04` Search UX + Relevance Checks
-5. `8-01` Intent + Query Orchestrator
+1. `10-01` QR Code Generation for Locations
+2. `10-02` Scan-to-View Endpoint + Routing
+3. `10-03` Verification Mode
+4. `11-01` Mobile Architecture ADR + Bootstrap
+5. `11-02` Shared API Client + Auth Integration
