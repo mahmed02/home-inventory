@@ -87,9 +87,9 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 - [x] Decide hosting target (AWS stack vs Vercel/Supabase)
 - [x] Add baseline lint/format config and CI checks
 - [x] Add deployment checklist (env vars, DB migration runbook, backup schedule)
-- [ ] Add public staging domain + HTTPS (ACM + ALB/Nginx + DNS) [deferred]
-- [ ] Hook up Cloudflare DNS (`staging.myhomeinventory.net`) to AWS target [deferred]
-- [ ] Run smoke checks on HTTPS staging URL (including `CHECK_UPLOADS=true`)
+- [x] Add public staging domain + HTTPS (ACM + ALB/Nginx + DNS)
+- [x] Hook up Cloudflare DNS (`staging.myhomeinventory.net`) to AWS target
+- [x] Run smoke checks on HTTPS staging URL (including `CHECK_UPLOADS=true`)
 - [x] Add production cutover + rollback rehearsal notes after first HTTPS deploy
 
 ### Data / Quality
@@ -106,7 +106,7 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 - [x] Add import dry-run mode (`validate_only=true`)
 - [x] Add optional id remap mode for merging into non-empty inventories (future-safe)
 - [x] Automate scheduled backup export and retention policy
-- [ ] Run one restore drill from backup JSON in staging
+- [x] Run one restore drill from backup JSON in staging
 
 ### Photo Support (to complete Phase 5)
 - [x] Add direct file upload for item/location images
