@@ -369,6 +369,129 @@ test("POST /locations/:id/move-impact rejects cyclical move previews", async () 
   assert.deepEqual(impact.json, { error: "Invalid move: would create a cycle" });
 });
 
+test("POST /locations/:id/move-impact handles empty subtree moves", async () => {
+  const house = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(house.status, 201);
+  const houseId = (house.json as { id: string }).id;
+
+  const emptyRoom = await request("/locations", {
+    method: "POST",
+    body: { name: "Empty Room", code: "ER1", type: "room", parent_id: houseId },
+  });
+  assert.equal(emptyRoom.status, 201);
+  const emptyRoomId = (emptyRoom.json as { id: string }).id;
+
+  const impact = await request(`/locations/${emptyRoomId}/move-impact`, {
+    method: "POST",
+    body: { parent_id: null },
+  });
+  assert.equal(impact.status, 200);
+
+  const impactJson = impact.json as {
+    affected_locations: number;
+    affected_items: number;
+    sample: unknown[];
+    sample_truncated: boolean;
+  };
+  assert.equal(impactJson.affected_locations, 1);
+  assert.equal(impactJson.affected_items, 0);
+  assert.equal(impactJson.sample.length, 0);
+  assert.equal(impactJson.sample_truncated, false);
+});
+
+test("Move-impact preview and apply flow supports large subtree updates", async () => {
+  const house = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(house.status, 201);
+  const houseId = (house.json as { id: string }).id;
+
+  const zoneA = await request("/locations", {
+    method: "POST",
+    body: { name: "Zone A", code: "ZA1", type: "room", parent_id: houseId },
+  });
+  assert.equal(zoneA.status, 201);
+  const zoneAId = (zoneA.json as { id: string }).id;
+
+  const zoneB = await request("/locations", {
+    method: "POST",
+    body: { name: "Zone B", code: "ZB1", type: "room", parent_id: houseId },
+  });
+  assert.equal(zoneB.status, 201);
+  const zoneBId = (zoneB.json as { id: string }).id;
+
+  const shelfIds: string[] = [];
+  for (let index = 1; index <= 5; index += 1) {
+    const shelf = await request("/locations", {
+      method: "POST",
+      body: {
+        name: `Shelf ${index}`,
+        code: `S${index}`,
+        type: "shelf",
+        parent_id: zoneAId,
+      },
+    });
+    assert.equal(shelf.status, 201);
+    shelfIds.push((shelf.json as { id: string }).id);
+  }
+
+  let itemCounter = 1;
+  for (const shelfId of shelfIds) {
+    for (let perShelf = 0; perShelf < 3; perShelf += 1) {
+      const item = await request("/items", {
+        method: "POST",
+        body: {
+          name: `Bulk Item ${itemCounter}`,
+          keywords: ["bulk", "move"],
+          location_id: shelfId,
+        },
+      });
+      assert.equal(item.status, 201);
+      itemCounter += 1;
+    }
+  }
+
+  const impact = await request(`/locations/${zoneAId}/move-impact`, {
+    method: "POST",
+    body: { parent_id: zoneBId },
+  });
+  assert.equal(impact.status, 200);
+  const impactJson = impact.json as {
+    affected_locations: number;
+    affected_items: number;
+    sample: unknown[];
+    sample_truncated: boolean;
+  };
+  assert.equal(impactJson.affected_locations, 6);
+  assert.equal(impactJson.affected_items, 15);
+  assert.equal(impactJson.sample.length, 10);
+  assert.equal(impactJson.sample_truncated, true);
+
+  const appliedMove = await request(`/locations/${zoneAId}`, {
+    method: "PATCH",
+    body: { parent_id: zoneBId },
+  });
+  assert.equal(appliedMove.status, 200);
+
+  const movedShelfPath = await request(`/locations/${shelfIds[0]}/path`);
+  assert.equal(movedShelfPath.status, 200);
+  assert.deepEqual(movedShelfPath.json, {
+    id: shelfIds[0],
+    name: "Shelf 1",
+    path: "House > Zone B > Zone A > Shelf 1",
+  });
+
+  const search = await request("/items/search?q=Bulk%20Item%201&limit=1&offset=0");
+  assert.equal(search.status, 200);
+  const searchJson = search.json as { results: Array<{ location_path: string }>; total: number };
+  assert.equal(searchJson.total, 7);
+  assert.equal(searchJson.results[0].location_path, "House > Zone B > Zone A > Shelf 1");
+});
+
 test("Invalid UUID validation paths return 400", async () => {
   const invalidLocationPath = await request("/locations/not-a-uuid/path");
   assert.equal(invalidLocationPath.status, 400);

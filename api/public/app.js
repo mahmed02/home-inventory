@@ -51,6 +51,7 @@ const createActionsModal = document.getElementById("createActionsModal");
 const createLocationModal = document.getElementById("createLocationModal");
 const createItemModal = document.getElementById("createItemModal");
 const editLocationModal = document.getElementById("editLocationModal");
+const moveImpactModal = document.getElementById("moveImpactModal");
 const editItemModal = document.getElementById("editItemModal");
 const imageLightboxModal = document.getElementById("imageLightboxModal");
 const imageLightboxImg = document.getElementById("imageLightboxImg");
@@ -91,6 +92,10 @@ const editLocImageFileInput = document.getElementById("editLocImageFile");
 const uploadEditLocImageBtn = document.getElementById("uploadEditLocImageBtn");
 const editLocParentSelect = document.getElementById("editLocParentId");
 const deleteLocationBtn = document.getElementById("deleteLocationBtn");
+const moveImpactSummaryEl = document.getElementById("moveImpactSummary");
+const moveImpactSampleEl = document.getElementById("moveImpactSample");
+const confirmMoveImpactBtn = document.getElementById("confirmMoveImpactBtn");
+const cancelMoveImpactBtn = document.getElementById("cancelMoveImpactBtn");
 
 const editItemNameInput = document.getElementById("editItemName");
 const editItemDescriptionInput = document.getElementById("editItemDescription");
@@ -117,6 +122,7 @@ let householdInvitations = [];
 let activeHouseholdId = "";
 let activeHouseholdRole = "";
 let refreshingHouseholds = false;
+let pendingLocationMove = null;
 
 const AUTH_TOKEN_STORAGE_KEY = "home_inventory_auth_token";
 const AUTH_USER_STORAGE_KEY = "home_inventory_auth_user";
@@ -126,6 +132,7 @@ const allModals = [
   createLocationModal,
   createItemModal,
   editLocationModal,
+  moveImpactModal,
   editItemModal,
   imageLightboxModal,
 ];
@@ -505,6 +512,9 @@ function closeModal(modalEl) {
   if (!modalEl) {
     return;
   }
+  if (modalEl === moveImpactModal) {
+    pendingLocationMove = null;
+  }
   modalEl.hidden = true;
   if (allModals.every((modal) => modal.hidden)) {
     document.body.classList.remove("modal-open");
@@ -515,6 +525,7 @@ function closeAllModals() {
   allModals.forEach((modal) => {
     modal.hidden = true;
   });
+  pendingLocationMove = null;
   document.body.classList.remove("modal-open");
 }
 
@@ -1012,6 +1023,56 @@ async function refreshAll() {
   await Promise.all([loadLocationTreeForForms(), refreshInventoryTree()]);
 }
 
+function renderMoveImpactPreview(impact) {
+  const affectedLocations = Number(impact.affected_locations || 0);
+  const affectedItems = Number(impact.affected_items || 0);
+  moveImpactSummaryEl.textContent = `This move affects ${affectedLocations} location(s) and ${affectedItems} item(s).`;
+
+  const sample = Array.isArray(impact.sample) ? impact.sample : [];
+  if (!sample.length) {
+    moveImpactSampleEl.innerHTML =
+      '<li class="management-empty">No items are currently under this location subtree.</li>';
+    return;
+  }
+
+  moveImpactSampleEl.innerHTML = sample
+    .map((entry) => {
+      const beforePath = entry.before_path || "";
+      const afterPath = entry.after_path || "";
+      const itemName = entry.item_name || "Item";
+      return `
+        <li class="management-item">
+          <div class="management-main">
+            <div class="management-title">${escapeHtml(itemName)}</div>
+            <div class="management-subtle">Before: ${escapeHtml(beforePath)}</div>
+            <div class="management-subtle">After: ${escapeHtml(afterPath)}</div>
+          </div>
+        </li>
+      `;
+    })
+    .join("");
+}
+
+async function applyLocationUpdate(locationId, payload) {
+  await fetchJson(`/locations/${locationId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  await refreshAll();
+  selectLocation(locationId);
+  closeModal(editLocationModal);
+}
+
+async function previewLocationMove(locationId, payload) {
+  const impact = await fetchJson(`/locations/${locationId}/move-impact`, {
+    method: "POST",
+    body: JSON.stringify({ parent_id: payload.parent_id }),
+  });
+  pendingLocationMove = { locationId, payload };
+  renderMoveImpactPreview(impact);
+  openModal(moveImpactModal);
+}
+
 resultsEl.addEventListener("click", async (event) => {
   const image = event.target.closest(".thumb");
   if (image && image.src) {
@@ -1123,6 +1184,29 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+confirmMoveImpactBtn.addEventListener("click", async () => {
+  if (!pendingLocationMove) {
+    closeModal(moveImpactModal);
+    return;
+  }
+
+  confirmMoveImpactBtn.disabled = true;
+  try {
+    await applyLocationUpdate(pendingLocationMove.locationId, pendingLocationMove.payload);
+    closeModal(moveImpactModal);
+    setStatus("Location moved.");
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    confirmMoveImpactBtn.disabled = false;
+  }
+});
+
+cancelMoveImpactBtn.addEventListener("click", () => {
+  closeModal(moveImpactModal);
+  setStatus("Move canceled.");
+});
+
 createLocationForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -1207,13 +1291,18 @@ editLocationForm.addEventListener("submit", async (event) => {
   }
 
   try {
-    await fetchJson(`/locations/${selectedLocationId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    });
-    await refreshAll();
-    selectLocation(selectedLocationId);
-    closeModal(editLocationModal);
+    const currentLocation = locationMap.get(selectedLocationId);
+    const currentParentId = currentLocation ? currentLocation.parent_id || null : null;
+    const nextParentId = payload.parent_id || null;
+    const isMove = currentParentId !== nextParentId;
+
+    if (isMove) {
+      await previewLocationMove(selectedLocationId, payload);
+      setStatus("Review move impact and confirm.");
+      return;
+    }
+
+    await applyLocationUpdate(selectedLocationId, payload);
     setStatus("Location updated.");
   } catch (error) {
     setStatus(error.message);

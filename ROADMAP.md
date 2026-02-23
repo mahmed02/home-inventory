@@ -120,7 +120,7 @@ These are the remaining tasks to consider MVP fully hardened for solo/household 
 Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICKETS.md`
 
 ### Phase 6 — Container Movement Optimization
-- [ ] Location move confirmation UX and bulk impact visibility
+- [x] Location move confirmation UX and bulk impact visibility
 - [x] Optional move preview (before/after path for affected items)
 
 ### Phase 6.5 — Multi-User Accounts + Inventory Ownership

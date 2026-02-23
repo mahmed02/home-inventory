@@ -29,7 +29,7 @@ Status: `done`
   - Existing move behavior is unchanged when preview is not requested.
 
 ## 6-02) Move Confirmation UX
-Status: `todo`
+Status: `done`
 - Depends on: `6-01`
 - Scope:
   - Add confirmation modal before location move commit.
@@ -39,7 +39,7 @@ Status: `todo`
   - Confirmed move reflects updated paths in UI.
 
 ## 6-03) Bulk Impact Visibility + Tests
-Status: `todo`
+Status: `done`
 - Depends on: `6-01`, `6-02`
 - Scope:
   - Add contract/UI tests for large subtree move previews and apply flow.
@@ -354,8 +354,8 @@ Status: `todo`
 
 ## Suggested Next Batch
 
-1. `6-02` Move Confirmation UX
-2. `6-03` Bulk Impact Visibility + Tests
-3. `7-01` Embeddings Store + Provider Integration
-4. `7-02` Backfill + Reindex Job
-5. `7-03` Semantic Search API
+1. `7-01` Embeddings Store + Provider Integration
+2. `7-02` Backfill + Reindex Job
+3. `7-03` Semantic Search API
+4. `7-04` Search UX + Relevance Checks
+5. `8-01` Intent + Query Orchestrator
