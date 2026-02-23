@@ -40,6 +40,9 @@ jobs:
       EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
       APP_DIR: ${{ vars.APP_DIR != '' && vars.APP_DIR || '/srv/home_inventory' }}
       PROCESS_NAME: ${{ vars.PROCESS_NAME != '' && vars.PROCESS_NAME || 'home-inventory-api' }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER != '' && vars.DEPLOY_USER || 'ubuntu' }}
+      DEPLOY_HEALTH_MAX_ATTEMPTS: ${{ vars.DEPLOY_HEALTH_MAX_ATTEMPTS != '' && vars.DEPLOY_HEALTH_MAX_ATTEMPTS || '' }}
+      DEPLOY_HEALTH_RETRY_DELAY_SECONDS: ${{ vars.DEPLOY_HEALTH_RETRY_DELAY_SECONDS != '' && vars.DEPLOY_HEALTH_RETRY_DELAY_SECONDS || '' }}
       DISPATCH_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || 'deploy' }}
       DISPATCH_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || '' }}
       DEFAULT_DEPLOY_REF: ${{ github.sha }}
@@ -123,6 +126,31 @@ jobs:
             fi
           }
 
+          validate_deploy_user() {
+            local deploy_user_value="$1"
+            if [[ -z "${deploy_user_value}" ]]; then
+              echo "DEPLOY_USER cannot be empty" >&2
+              exit 1
+            fi
+            if [[ ! "${deploy_user_value}" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]; then
+              echo "DEPLOY_USER contains invalid characters" >&2
+              exit 1
+            fi
+          }
+
+          validate_positive_int() {
+            local value="$1"
+            local label="$2"
+            if [[ ! "${value}" =~ ^[0-9]+$ ]]; then
+              echo "${label} must be a positive integer" >&2
+              exit 1
+            fi
+            if (( value < 1 )); then
+              echo "${label} must be at least 1" >&2
+              exit 1
+            fi
+          }
+
           if [[ "${DISPATCH_ACTION}" != "deploy" && "${DISPATCH_ACTION}" != "rollback" ]]; then
             echo "Unsupported action: ${DISPATCH_ACTION}" >&2
             exit 1
@@ -130,6 +158,16 @@ jobs:
 
           validate_app_dir "${APP_DIR}"
           validate_process_name "${PROCESS_NAME}"
+          validate_deploy_user "${DEPLOY_USER}"
+
+          if [[ -n "${DEPLOY_HEALTH_MAX_ATTEMPTS}" ]]; then
+            validate_positive_int "${DEPLOY_HEALTH_MAX_ATTEMPTS}" "DEPLOY_HEALTH_MAX_ATTEMPTS"
+          fi
+          if [[ -n "${DEPLOY_HEALTH_RETRY_DELAY_SECONDS}" ]]; then
+            validate_positive_int "${DEPLOY_HEALTH_RETRY_DELAY_SECONDS}" "DEPLOY_HEALTH_RETRY_DELAY_SECONDS"
+          fi
+
+          REMOTE_BASE="cd ${APP_DIR} && git -c safe.directory=${APP_DIR} stash push --include-untracked --message workflow-predeploy-${GITHUB_RUN_ID} >/dev/null || true && chmod +x scripts/deploy.sh scripts/rollback.sh"
 
           if [[ "${DISPATCH_ACTION}" == "rollback" ]]; then
             if [[ -z "${DISPATCH_REF}" ]]; then
@@ -137,13 +175,21 @@ jobs:
               exit 1
             fi
             validate_ref "${DISPATCH_REF}"
-            COMMAND="cd ${APP_DIR} && git -c safe.directory=${APP_DIR} stash push --include-untracked --message 'workflow-predeploy-${GITHUB_RUN_ID}' >/dev/null || true && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} ROLLBACK_REF='${DISPATCH_REF}' ./scripts/rollback.sh"
+            REMOTE_CMD="${REMOTE_BASE} && APP_DIR=${APP_DIR} ROLLBACK_REF=${DISPATCH_REF} ./scripts/rollback.sh"
           else
             DEPLOY_REF="${DISPATCH_REF:-${DEFAULT_DEPLOY_REF}}"
             validate_ref "${DEPLOY_REF}"
-            COMMAND="cd ${APP_DIR} && git -c safe.directory=${APP_DIR} stash push --include-untracked --message 'workflow-predeploy-${GITHUB_RUN_ID}' >/dev/null || true && chmod +x scripts/deploy.sh scripts/rollback.sh && APP_DIR=${APP_DIR} DEPLOY_REF='${DEPLOY_REF}' PROCESS_NAME='${PROCESS_NAME}' ./scripts/deploy.sh"
+            DEPLOY_OVERRIDES=""
+            if [[ -n "${DEPLOY_HEALTH_MAX_ATTEMPTS}" ]]; then
+              DEPLOY_OVERRIDES="${DEPLOY_OVERRIDES} DEPLOY_HEALTH_MAX_ATTEMPTS=${DEPLOY_HEALTH_MAX_ATTEMPTS}"
+            fi
+            if [[ -n "${DEPLOY_HEALTH_RETRY_DELAY_SECONDS}" ]]; then
+              DEPLOY_OVERRIDES="${DEPLOY_OVERRIDES} DEPLOY_HEALTH_RETRY_DELAY_SECONDS=${DEPLOY_HEALTH_RETRY_DELAY_SECONDS}"
+            fi
+            REMOTE_CMD="${REMOTE_BASE} && APP_DIR=${APP_DIR} DEPLOY_REF=${DEPLOY_REF} PROCESS_NAME=${PROCESS_NAME}${DEPLOY_OVERRIDES} ./scripts/deploy.sh"
           fi
 
+          printf -v COMMAND "sudo -u %s -H bash -lc %q" "${DEPLOY_USER}" "${REMOTE_CMD}"
           PARAMETERS_JSON=$(jq -cn --arg cmd "${COMMAND}" '{commands: [$cmd]}')
 
           COMMAND_ID=$(aws ssm send-command \

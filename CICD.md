@@ -32,6 +32,9 @@ Environment variables:
 - `EC2_INSTANCE_ID` (target EC2 instance id)
 - `APP_DIR` (optional, default `/srv/home_inventory`)
 - `PROCESS_NAME` (optional, default `home-inventory-api`)
+- `DEPLOY_USER` (optional, default `ubuntu`; SSM executes deploy/rollback as this user)
+- `DEPLOY_HEALTH_MAX_ATTEMPTS` (optional override for deploy health retries)
+- `DEPLOY_HEALTH_RETRY_DELAY_SECONDS` (optional override for delay between health retries)
 
 Environment secret:
 - `AWS_DEPLOY_ROLE_ARN` (IAM role assumed by GitHub via OIDC)
@@ -108,12 +111,12 @@ On EC2, ensure repo exists at `APP_DIR` and PM2 process name matches.
 
 `deploy.sh` on EC2 executes:
 1. `git fetch` + `git checkout` target ref
-2. `npm --prefix ./api ci`
-3. install AWS S3 SDK runtime deps (no-save)
+2. normalize `api/` ownership + remove stale `api/node_modules`
+3. `npm --prefix ./api ci`
 4. `npm --prefix ./api run migrate`
 5. `npm --prefix ./api run build`
 6. `pm2 restart home-inventory-api` (or start if missing)
-7. local health/search smoke checks against `127.0.0.1:4000`
+7. local health/search checks against `127.0.0.1:4000` (health uses retry/backoff)
 
 ## 6) Manual Deploy / Rollback
 
