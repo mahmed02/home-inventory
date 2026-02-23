@@ -39,6 +39,7 @@ export async function resetInventoryData(): Promise<void> {
   try {
     await pool.query("DELETE FROM movement_history");
     await pool.query("DELETE FROM items");
+    await pool.query("DELETE FROM location_qr_codes");
     await pool.query("DELETE FROM locations");
     await pool.query("COMMIT");
   } catch (error) {
@@ -54,6 +55,7 @@ export async function seedInventoryData(): Promise<void> {
 
     await client.query("DELETE FROM movement_history");
     await client.query("DELETE FROM items");
+    await client.query("DELETE FROM location_qr_codes");
     await client.query("DELETE FROM locations");
 
     const houseId = await insertLocation(client, {
@@ -90,6 +92,15 @@ export async function seedInventoryData(): Promise<void> {
       type: "shelf",
       parentId: basementId,
     });
+
+    await client.query(
+      `
+      INSERT INTO location_qr_codes(location_id)
+      SELECT id
+      FROM locations
+      ON CONFLICT (location_id) DO NOTHING
+      `
+    );
 
     await insertItem(client, {
       name: "Ryobi Air Compressor",

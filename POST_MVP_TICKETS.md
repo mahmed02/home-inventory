@@ -17,9 +17,9 @@ Ticket status values:
 
 ## Active Queue (Current)
 
-1. `10-01` QR Code Generation for Locations (`todo`) — next up
-2. `10-02` Scan-to-View Endpoint + Routing (`todo`) — depends on `10-01`
-3. `10-03` Verification Mode (`todo`) — depends on `10-02`
+1. `10-02` Scan-to-View Endpoint + Routing (`todo`) — next up
+2. `10-03` Verification Mode (`todo`) — depends on `10-02`
+3. `11-01` Mobile Architecture ADR + Bootstrap (`todo`) — queued after Phase 10
 
 ---
 
@@ -288,7 +288,7 @@ Status: `done`
 ## Phase 10 — Physical-Digital Sync
 
 ## 10-01) QR Code Generation for Locations
-Status: `todo`
+Status: `done`
 - Scope:
   - Generate/store printable QR references for location nodes.
 - Acceptance:
@@ -360,8 +360,8 @@ Status: `todo`
 
 ## Suggested Next Batch
 
-1. `10-01` QR Code Generation for Locations
-2. `10-02` Scan-to-View Endpoint + Routing
-3. `10-03` Verification Mode
-4. `11-01` Mobile Architecture ADR + Bootstrap
-5. `11-02` Shared API Client + Auth Integration
+1. `10-02` Scan-to-View Endpoint + Routing
+2. `10-03` Verification Mode
+3. `11-01` Mobile Architecture ADR + Bootstrap
+4. `11-02` Shared API Client + Auth Integration
+5. `11-03` Local-Only Mode Data Layer

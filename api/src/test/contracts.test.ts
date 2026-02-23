@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { AddressInfo } from "node:net";
 import path from "node:path";
+import { URL } from "node:url";
 import test, { after, before, beforeEach } from "node:test";
 import dotenv from "dotenv";
 import { Pool } from "pg";
@@ -86,6 +87,7 @@ async function resetDatabase(): Promise<void> {
   await pool.query("DROP TABLE IF EXISTS movement_history CASCADE");
   await pool.query("DROP TABLE IF EXISTS item_embeddings CASCADE");
   await pool.query("DROP TABLE IF EXISTS items CASCADE");
+  await pool.query("DROP TABLE IF EXISTS location_qr_codes CASCADE");
   await pool.query("DROP TABLE IF EXISTS locations CASCADE");
   await pool.query("DROP TABLE IF EXISTS household_invitations CASCADE");
   await pool.query("DROP TABLE IF EXISTS household_members CASCADE");
@@ -102,6 +104,7 @@ async function clearData(): Promise<void> {
   await pool.query("DELETE FROM movement_history");
   await pool.query("DELETE FROM item_embeddings");
   await pool.query("DELETE FROM items");
+  await pool.query("DELETE FROM location_qr_codes");
   await pool.query("DELETE FROM locations");
   await pool.query("DELETE FROM household_invitations");
   await pool.query("DELETE FROM household_members");
@@ -245,6 +248,91 @@ test("GET /locations/:id/path returns breadcrumb path", async () => {
     name: "Shelf 2",
     path: "House > Garage > Shelf 2",
   });
+});
+
+test("GET /locations/:id/qr returns stable QR reference payload", async () => {
+  const house = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(house.status, 201);
+  const houseId = (house.json as { id: string }).id;
+
+  const firstQr = await request(`/locations/${houseId}/qr`);
+  assert.equal(firstQr.status, 200);
+  const firstQrJson = firstQr.json as {
+    location_id: string;
+    location_name: string;
+    qr_code: string;
+    scan_path: string;
+    scan_url: string;
+    payload: string;
+    created_at: string;
+    updated_at: string;
+  };
+
+  assert.equal(firstQrJson.location_id, houseId);
+  assert.equal(firstQrJson.location_name, "House");
+  assert.match(
+    firstQrJson.qr_code,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  );
+  assert.equal(firstQrJson.scan_path, `/scan/location/${firstQrJson.qr_code}`);
+  assert.equal(firstQrJson.payload, firstQrJson.scan_url);
+  assert.equal(new URL(firstQrJson.scan_url).pathname, firstQrJson.scan_path);
+  assert.ok(typeof firstQrJson.created_at === "string");
+  assert.ok(typeof firstQrJson.updated_at === "string");
+
+  const secondQr = await request(`/locations/${houseId}/qr`);
+  assert.equal(secondQr.status, 200);
+  const secondQrJson = secondQr.json as { qr_code: string; scan_url: string };
+  assert.equal(secondQrJson.qr_code, firstQrJson.qr_code);
+  assert.equal(secondQrJson.scan_url, firstQrJson.scan_url);
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: houseId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const garageQr = await request(`/locations/${garageId}/qr`);
+  assert.equal(garageQr.status, 200);
+  const garageQrJson = garageQr.json as { qr_code: string };
+  assert.notEqual(garageQrJson.qr_code, firstQrJson.qr_code);
+});
+
+test("GET /locations/:id/qr enforces owner scope", async () => {
+  const owner = await request("/auth/register", {
+    method: "POST",
+    body: { email: "qr-owner@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(owner.status, 201);
+  const ownerToken = (owner.json as { token: string }).token;
+
+  const outsider = await request("/auth/register", {
+    method: "POST",
+    body: { email: "qr-outsider@example.com", password: "SuperSecret123!" },
+  });
+  assert.equal(outsider.status, 201);
+  const outsiderToken = (outsider.json as { token: string }).token;
+
+  const ownerRoot = await request("/locations", {
+    method: "POST",
+    token: ownerToken,
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(ownerRoot.status, 201);
+  const ownerRootId = (ownerRoot.json as { id: string }).id;
+
+  const ownerQr = await request(`/locations/${ownerRootId}/qr`, { token: ownerToken });
+  assert.equal(ownerQr.status, 200);
+  const ownerQrJson = ownerQr.json as { location_id: string };
+  assert.equal(ownerQrJson.location_id, ownerRootId);
+
+  const outsiderQr = await request(`/locations/${ownerRootId}/qr`, { token: outsiderToken });
+  assert.equal(outsiderQr.status, 404);
+  assert.deepEqual(outsiderQr.json, { error: "Location not found" });
 });
 
 test("POST /locations/:id/move-impact previews affected items and paths", async () => {

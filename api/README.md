@@ -108,6 +108,7 @@ For the full step-by-step runbook, use:
 - `POST /locations`
 - `GET /locations/tree`
 - `GET /locations/:id/path`
+- `GET /locations/:id/qr`
 - `PATCH /locations/:id`
 - `DELETE /locations/:id`
 - `POST /items`
@@ -239,6 +240,7 @@ Notes:
 - `0008_add_households_and_sharing.sql`
 - `0009_add_item_embeddings.sql`
 - `0010_add_movement_history.sql`
+- `0011_add_location_qr_codes.sql`
 
 ## Notes
 

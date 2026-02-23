@@ -143,7 +143,7 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - [x] History view in UI
 
 ### Phase 10 — Physical-Digital Sync
-- [ ] QR generation for locations
+- [x] QR generation for locations
 - [ ] Scan-to-view experience
 - [ ] Verification mode for expected vs actual inventory
 
@@ -160,16 +160,16 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 ## 4) Next Tasks (Recommended Order)
 
 ### Queued Now
-1. `10-01` QR code generation for locations
-2. `10-02` Scan-to-view endpoint + routing
-3. `10-03` Verification mode (expected vs actual)
+1. `10-02` Scan-to-view endpoint + routing
+2. `10-03` Verification mode (expected vs actual)
+3. `11-01` Mobile architecture ADR + bootstrap
 
 ### Next Batch (immediately actionable)
-1. `10-01` QR code generation for locations
-2. `10-02` Scan-to-view endpoint + routing
-3. `10-03` Verification mode (expected vs actual)
-4. `11-01` Mobile architecture ADR + bootstrap
-5. `11-02` Shared API client + mobile auth integration
+1. `10-02` Scan-to-view endpoint + routing
+2. `10-03` Verification mode (expected vs actual)
+3. `11-01` Mobile architecture ADR + bootstrap
+4. `11-02` Shared API client + mobile auth integration
+5. `11-03` Local-only mode data layer
 
 ### Follow-up Batch
 1. `11-01` Mobile architecture ADR + bootstrap

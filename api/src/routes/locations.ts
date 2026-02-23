@@ -8,6 +8,8 @@ import {
 } from "../middleware/http";
 import { asOptionalText, asOptionalUuid, asRequiredText } from "../middleware/validation";
 import { pool } from "../db/pool";
+import { env } from "../config/env";
+import { ensureLocationQrCode } from "../db/locationQRCodes";
 import {
   InventoryScope,
   canWriteInventory,
@@ -106,6 +108,20 @@ function handleDbError(error: unknown, res: Response) {
   return sendInternalError(error, res);
 }
 
+function normalizedAppBaseUrl(): string {
+  const raw = normalizeOptionalText(env.appBaseUrl) ?? `http://localhost:${env.port}`;
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  return withScheme.replace(/\/+$/, "");
+}
+
+function buildLocationScanPayload(code: string): { scanPath: string; scanUrl: string } {
+  const scanPath = `/scan/location/${code}`;
+  return {
+    scanPath,
+    scanUrl: `${normalizedAppBaseUrl()}${scanPath}`,
+  };
+}
+
 locationsRouter.post("/locations", async (req, res) => {
   const name = asRequiredText(req.body.name);
   const code = asOptionalText(req.body.code);
@@ -122,6 +138,7 @@ locationsRouter.post("/locations", async (req, res) => {
     return sendValidationError(res, "parent_id must be a UUID or null");
   }
 
+  const client = await pool.connect();
   try {
     const scope = await resolveScope(req, res);
     if (!scope) {
@@ -131,9 +148,11 @@ locationsRouter.post("/locations", async (req, res) => {
       return;
     }
 
+    await client.query("BEGIN");
+
     if (parentId) {
       const parentScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
-      const parent = await pool.query(
+      const parent = await client.query(
         `
         SELECT id
         FROM locations
@@ -142,11 +161,12 @@ locationsRouter.post("/locations", async (req, res) => {
         [parentId, ...parentScope.params]
       );
       if (parent.rowCount === 0) {
+        await client.query("ROLLBACK");
         return sendValidationError(res, "parent_id does not exist");
       }
     }
 
-    const result = await pool.query<LocationRow>(
+    const result = await client.query<LocationRow>(
       `
       INSERT INTO locations(
         name,
@@ -164,9 +184,20 @@ locationsRouter.post("/locations", async (req, res) => {
       [name, code, type, parentId, description, imageUrl, scope.ownerUserId, scope.householdId]
     );
 
-    return res.status(201).json(result.rows[0]);
+    const created = result.rows[0];
+    await ensureLocationQrCode(client, {
+      locationId: created.id,
+      ownerUserId: created.owner_user_id ?? scope.ownerUserId ?? null,
+      householdId: created.household_id ?? scope.householdId ?? null,
+    });
+
+    await client.query("COMMIT");
+    return res.status(201).json(created);
   } catch (error) {
+    await client.query("ROLLBACK");
     return handleDbError(error, res);
+  } finally {
+    client.release();
   }
 });
 
@@ -300,6 +331,81 @@ locationsRouter.get("/locations/:id/path", async (req, res) => {
     }
 
     return res.status(200).json(result.rows[0]);
+  } catch (error) {
+    return sendInternalError(error, res);
+  }
+});
+
+locationsRouter.get("/locations/:id/qr", async (req, res) => {
+  const id = req.params.id;
+  if (!isUuid(id)) {
+    return sendValidationError(res, "Invalid location id");
+  }
+
+  try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
+    const locationScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const location = await pool.query<{
+      id: string;
+      name: string;
+      owner_user_id: string | null;
+      household_id: string | null;
+    }>(
+      `
+      SELECT id, name, owner_user_id, household_id
+      FROM locations
+      WHERE id = $1 AND ${locationScope.sql}
+      `,
+      [id, ...locationScope.params]
+    );
+
+    if (location.rowCount === 0) {
+      return sendNotFound(res, "Location not found");
+    }
+
+    const qr = await pool.query<{
+      id: string;
+      location_id: string;
+      code: string;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `
+      SELECT id, location_id, code, created_at, updated_at
+      FROM location_qr_codes
+      WHERE location_id = $1
+      `,
+      [id]
+    );
+
+    let qrRef = qr.rows[0] ?? null;
+    if (!qrRef) {
+      if (!canWriteInventory(scope)) {
+        return res.status(503).json({ error: "QR reference not initialized for this location" });
+      }
+      qrRef = await ensureLocationQrCode(pool, {
+        locationId: id,
+        ownerUserId: location.rows[0].owner_user_id ?? scope.ownerUserId ?? null,
+        householdId: location.rows[0].household_id ?? scope.householdId ?? null,
+      });
+    }
+
+    const { scanPath, scanUrl } = buildLocationScanPayload(qrRef.code);
+
+    return res.status(200).json({
+      location_id: id,
+      location_name: location.rows[0].name,
+      qr_code: qrRef.code,
+      scan_path: scanPath,
+      scan_url: scanUrl,
+      payload: scanUrl,
+      created_at: qrRef.created_at,
+      updated_at: qrRef.updated_at,
+    });
   } catch (error) {
     return sendInternalError(error, res);
   }
