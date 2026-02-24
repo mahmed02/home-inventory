@@ -38,6 +38,13 @@ export type InventoryAssistantResponse = {
   quantity_operation?: "get" | "set" | "add" | "remove" | null;
 };
 
+export type InventoryAssistantOptions = {
+  allowQuantityMutations?: boolean;
+  idempotencyKey?: string | null;
+};
+
+type QuantityMutationOperation = "set" | "add" | "remove";
+
 function roundConfidence(value: number): number {
   const clamped = Math.max(0, Math.min(1, value));
   return Math.round(clamped * 100) / 100;
@@ -405,6 +412,84 @@ function ambiguousQuantityResponse(
   };
 }
 
+function normalizeIdempotencyKey(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    return null;
+  }
+  return normalized.slice(0, 120);
+}
+
+function idempotencyScopeKey(scope: InventoryScope): string {
+  if (scope.householdId) {
+    return `household:${scope.householdId}`;
+  }
+  if (scope.ownerUserId) {
+    return `owner:${scope.ownerUserId}`;
+  }
+  return "legacy:unscoped";
+}
+
+function quantityRequestFingerprint(params: {
+  intent: InventoryIntent;
+  subject: string;
+  operation: QuantityMutationOperation;
+  amount: number;
+  itemId: string;
+}): string {
+  return JSON.stringify({
+    intent: params.intent,
+    subject: params.subject.toLowerCase(),
+    operation: params.operation,
+    amount: params.amount,
+    item_id: params.itemId,
+  });
+}
+
+function responseFromPayload(value: unknown): InventoryAssistantResponse | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const payload = value as Partial<InventoryAssistantResponse>;
+  if (typeof payload.answer !== "string" || typeof payload.intent !== "string") {
+    return null;
+  }
+  return payload as InventoryAssistantResponse;
+}
+
+function quantityConfirmationResponse(
+  parsed: ParsedInventoryIntent,
+  itemName: string,
+  locationPath: string,
+  operation: QuantityMutationOperation,
+  amount: number
+): InventoryAssistantResponse {
+  const actionText =
+    operation === "set"
+      ? `set ${itemName} to ${amount}`
+      : operation === "add"
+        ? `add ${amount} to ${itemName}`
+        : `remove ${amount} from ${itemName}`;
+
+  return {
+    query: parsed.rawQuery,
+    normalized_query: parsed.normalizedQuery,
+    intent: parsed.intent,
+    confidence: roundConfidence(parsed.confidence * 0.9),
+    fallback: false,
+    answer: `Confirmation required. I can ${actionText}. Re-run this request with confirm=true to apply.`,
+    item: itemName,
+    location_path: locationPath,
+    notes: "Use query parameter confirm=true and an idempotency key to avoid duplicate writes.",
+    match_count: 1,
+    requires_confirmation: true,
+    quantity_operation: operation,
+  };
+}
+
 async function getItemQuantityIntent(
   parsed: ParsedInventoryIntent,
   scope: InventoryScope
@@ -491,7 +576,8 @@ async function getItemQuantityIntent(
 async function mutateItemQuantityIntent(
   parsed: ParsedInventoryIntent,
   scope: InventoryScope,
-  operation: "set" | "add" | "remove"
+  operation: QuantityMutationOperation,
+  options: InventoryAssistantOptions
 ): Promise<InventoryAssistantResponse> {
   if (!canWriteInventory(scope)) {
     return readOnlyQuantityResponse(parsed);
@@ -524,9 +610,141 @@ async function mutateItemQuantityIntent(
 
   const top = searched.results[0];
   const amount = parsed.amount ?? (operation === "set" ? 0 : 1);
+  const allowQuantityMutations = options.allowQuantityMutations ?? true;
+  if (!allowQuantityMutations) {
+    return quantityConfirmationResponse(parsed, top.name, top.location_path, operation, amount);
+  }
+
+  const idempotencyKey = normalizeIdempotencyKey(options.idempotencyKey);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const scopeKey = idempotencyScopeKey(scope);
+    const requestFingerprint = quantityRequestFingerprint({
+      intent: parsed.intent,
+      subject: parsed.subject,
+      operation,
+      amount,
+      itemId: top.id,
+    });
+    let shouldPersistIdempotency = false;
+
+    if (idempotencyKey) {
+      await client.query(
+        `
+        DELETE FROM siri_idempotency_keys
+        WHERE scope_key = $1
+          AND expires_at <= now()
+        `,
+        [scopeKey]
+      );
+
+      const reserved = await client.query(
+        `
+        INSERT INTO siri_idempotency_keys(scope_key, idempotency_key, request_fingerprint)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (scope_key, idempotency_key) DO NOTHING
+        RETURNING id
+        `,
+        [scopeKey, idempotencyKey, requestFingerprint]
+      );
+
+      if (reserved.rowCount === 0) {
+        const existing = await client.query<{
+          request_fingerprint: string;
+          response_payload: unknown;
+        }>(
+          `
+          SELECT request_fingerprint, response_payload
+          FROM siri_idempotency_keys
+          WHERE scope_key = $1 AND idempotency_key = $2
+          LIMIT 1
+          FOR UPDATE
+          `,
+          [scopeKey, idempotencyKey]
+        );
+
+        if (existing.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return {
+            query: parsed.rawQuery,
+            normalized_query: parsed.normalizedQuery,
+            intent: parsed.intent,
+            confidence: roundConfidence(parsed.confidence * 0.6),
+            fallback: true,
+            answer: "I couldn't secure this request safely. Please retry with a new idempotency key.",
+            item: top.name,
+            location_path: top.location_path,
+            notes: "No write was applied.",
+            match_count: 1,
+            requires_confirmation: true,
+            quantity_operation: operation,
+          };
+        }
+
+        const existingRow = existing.rows[0];
+        if (existingRow.request_fingerprint !== requestFingerprint) {
+          await client.query("ROLLBACK");
+          return {
+            query: parsed.rawQuery,
+            normalized_query: parsed.normalizedQuery,
+            intent: parsed.intent,
+            confidence: roundConfidence(parsed.confidence * 0.65),
+            fallback: true,
+            answer:
+              "This idempotency key was already used for a different quantity change. Use a new key.",
+            item: top.name,
+            location_path: top.location_path,
+            notes: "No write was applied.",
+            match_count: 1,
+            requires_confirmation: true,
+            quantity_operation: operation,
+          };
+        }
+
+        const existingResponse = responseFromPayload(existingRow.response_payload);
+        if (existingResponse) {
+          await client.query("COMMIT");
+          return existingResponse;
+        }
+
+        await client.query("ROLLBACK");
+        return {
+          query: parsed.rawQuery,
+          normalized_query: parsed.normalizedQuery,
+          intent: parsed.intent,
+          confidence: roundConfidence(parsed.confidence * 0.65),
+          fallback: true,
+          answer: "A matching quantity update is still processing. Retry shortly with the same key.",
+          item: top.name,
+          location_path: top.location_path,
+          notes: "No additional write was applied.",
+          match_count: 1,
+          requires_confirmation: true,
+          quantity_operation: operation,
+        };
+      }
+
+      shouldPersistIdempotency = true;
+    }
+
+    async function commitWithResponse(
+      response: InventoryAssistantResponse
+    ): Promise<InventoryAssistantResponse> {
+      if (idempotencyKey && shouldPersistIdempotency) {
+        await client.query(
+          `
+          UPDATE siri_idempotency_keys
+          SET response_payload = $1::jsonb
+          WHERE scope_key = $2 AND idempotency_key = $3
+          `,
+          [JSON.stringify(response), scopeKey, idempotencyKey]
+        );
+      }
+      await client.query("COMMIT");
+      return response;
+    }
+
     const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
     const current = await client.query<{ id: string; name: string; quantity: number | null }>(
       `
@@ -539,8 +757,7 @@ async function mutateItemQuantityIntent(
     );
 
     if (current.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return {
+      return commitWithResponse({
         query: parsed.rawQuery,
         normalized_query: parsed.normalizedQuery,
         intent: parsed.intent,
@@ -553,7 +770,7 @@ async function mutateItemQuantityIntent(
         match_count: 0,
         requires_confirmation: false,
         quantity_operation: operation,
-      };
+      });
     }
 
     const currentRow = current.rows[0];
@@ -566,8 +783,7 @@ async function mutateItemQuantityIntent(
     } else if (operation === "add") {
       nextQuantity = baseQuantity + amount;
       if (nextQuantity > 2_147_483_647) {
-        await client.query("ROLLBACK");
-        return {
+        return commitWithResponse({
           query: parsed.rawQuery,
           normalized_query: parsed.normalizedQuery,
           intent: parsed.intent,
@@ -582,12 +798,11 @@ async function mutateItemQuantityIntent(
           quantity: previousQuantity,
           previous_quantity: previousQuantity,
           quantity_operation: operation,
-        };
+        });
       }
     } else {
       if (amount > baseQuantity) {
-        await client.query("ROLLBACK");
-        return {
+        return commitWithResponse({
           query: parsed.rawQuery,
           normalized_query: parsed.normalizedQuery,
           intent: parsed.intent,
@@ -602,7 +817,7 @@ async function mutateItemQuantityIntent(
           quantity: previousQuantity,
           previous_quantity: previousQuantity,
           quantity_operation: operation,
-        };
+        });
       }
       nextQuantity = baseQuantity - amount;
     }
@@ -615,12 +830,11 @@ async function mutateItemQuantityIntent(
       `,
       [nextQuantity, top.id, ...itemScope.params]
     );
-    await client.query("COMMIT");
 
     const actionVerb =
       operation === "set" ? "Set" : operation === "add" ? `Added ${amount} to` : `Removed ${amount} from`;
 
-    return {
+    return commitWithResponse({
       query: parsed.rawQuery,
       normalized_query: parsed.normalizedQuery,
       intent: parsed.intent,
@@ -635,7 +849,7 @@ async function mutateItemQuantityIntent(
       quantity: nextQuantity,
       previous_quantity: previousQuantity,
       quantity_operation: operation,
-    };
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -891,7 +1105,8 @@ function unsupportedActionIntent(parsed: ParsedInventoryIntent): InventoryAssist
 
 export async function answerInventoryQuestion(
   query: string,
-  scope: InventoryScope
+  scope: InventoryScope,
+  options: InventoryAssistantOptions = {}
 ): Promise<InventoryAssistantResponse> {
   const parsed = parseInventoryIntent(query);
 
@@ -905,11 +1120,11 @@ export async function answerInventoryQuestion(
     case "get_item_quantity":
       return getItemQuantityIntent(parsed, scope);
     case "set_item_quantity":
-      return mutateItemQuantityIntent(parsed, scope, "set");
+      return mutateItemQuantityIntent(parsed, scope, "set", options);
     case "add_item_quantity":
-      return mutateItemQuantityIntent(parsed, scope, "add");
+      return mutateItemQuantityIntent(parsed, scope, "add", options);
     case "remove_item_quantity":
-      return mutateItemQuantityIntent(parsed, scope, "remove");
+      return mutateItemQuantityIntent(parsed, scope, "remove", options);
     case "unsupported_action":
       return unsupportedActionIntent(parsed);
     default:

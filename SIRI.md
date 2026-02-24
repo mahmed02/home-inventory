@@ -7,6 +7,7 @@ This guide configures a Siri Shortcut that asks a natural-language inventory que
 - API server is running and reachable from the iPhone.
 - Endpoint available: `GET /api/items/lookup?q=<query>` (alias: `GET /shortcut/find-item?q=<query>`)
 - Auth mode chosen (`REQUIRE_AUTH` or `REQUIRE_USER_ACCOUNTS`; do not run both on-app at once).
+- Quantity mutations are confirmation-gated by default (`SIRI_REQUIRE_MUTATION_CONFIRMATION=true`).
 - API returns JSON like:
 
 ```json
@@ -60,8 +61,11 @@ If this fails, fix server/network first.
 7. Add action **Speak Text** with the `answer` value.
 8. Optional safety step:
    - Read key `requires_confirmation`.
-   - If `true`, speak a caution like: `Action request detected. Manual confirmation required in app.`
-9. Optional fallback step:
+   - If `true`, ask follow-up confirmation and call the URL again with `confirm=true`.
+9. Optional idempotency step (recommended for add/remove/set):
+   - Add header `x-idempotency-key: <unique value>` (for example, timestamp + random suffix).
+   - Reusing the same key replays the prior response instead of applying duplicate writes.
+10. Optional fallback step:
    - If `answer` is empty, read key `notes` and speak that instead.
 
 This gives natural responses for find/list/count prompts and quantity updates while handling guarded requests safely.
@@ -78,9 +82,9 @@ Natural prompts also work, for example:
 - `What is in the garage?`
 - `How many drill bits do I have?`
 - `Get count of drill bits`
-- `Add 3 drill bits`
-- `Remove 1 drill bit`
-- `Set quantity of drill bits to 10`
+- `Add 3 drill bits` (first pass prompts confirmation)
+- `Remove 1 drill bit` (first pass prompts confirmation)
+- `Set quantity of drill bits to 10` (first pass prompts confirmation)
 - `Move the drill to attic` (returns guarded response requiring confirmation)
 
 ## 4) Share With Family

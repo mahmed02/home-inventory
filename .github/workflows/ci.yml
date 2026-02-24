@@ -25,6 +25,7 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/home_inventory_test
       REQUIRE_AUTH: "false"
+      SEARCH_PROVIDER: memory
     defaults:
       run:
         working-directory: api

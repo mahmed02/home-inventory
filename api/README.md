@@ -55,7 +55,8 @@ Default DB URL expected by `.env.example`:
 | `REQUIRE_USER_ACCOUNTS` | `false` | `false` or `true` | `true` (recommended) | optional |
 | `SESSION_TTL_HOURS` | `720` | `720` | `720` | optional |
 | `CORS_ALLOW_ORIGINS` | empty (same-origin only) | comma-separated allowlist | comma-separated allowlist | optional |
-| `SEARCH_PROVIDER` | `pinecone` | `pinecone` | `pinecone` | yes |
+| `SEARCH_PROVIDER` | `memory` or `pinecone` | `pinecone` | `pinecone` | yes |
+| `SIRI_REQUIRE_MUTATION_CONFIRMATION` | `true` | `true` | `true` | optional |
 | `APP_BASE_URL` | `http://localhost:4000` | public HTTPS staging URL | public HTTPS prod URL | yes |
 | `AWS_REGION` | `us-east-1` | deployment region | deployment region | yes |
 | `S3_BUCKET` | dev bucket name | staging bucket name | prod bucket name | yes |
@@ -70,7 +71,9 @@ Default DB URL expected by `.env.example`:
 
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are only required when you are not using IAM role credentials on compute.
 
-Semantic search and Siri lookup retrieval use Pinecone integrated search (`SEARCH_PROVIDER=pinecone`).
+Semantic search supports:
+- `SEARCH_PROVIDER=pinecone` for production-grade semantic retrieval.
+- `SEARCH_PROVIDER=memory` for deterministic local/CI runs without external credentials.
 
 When `REQUIRE_AUTH=true`, all endpoints except `/health` require HTTP Basic auth.
 When `REQUIRE_USER_ACCOUNTS=true`, all endpoints except `/health` and `/auth/*` require a bearer session token.
@@ -185,6 +188,7 @@ For the full step-by-step runbook, use:
   - `GET /shortcut/find-item?q=`
 - Lookup response now includes intent metadata for conversational clients:
   - `intent`, `answer`, `confidence`, `fallback`, `requires_confirmation`
+- Quantity mutations via Siri (`add/remove/set`) require `confirm=true` by default and support idempotent replay with `idempotency_key` query param or `x-idempotency-key` header.
 
 ## S3 Image Uploads (Presigned URL)
 
@@ -214,7 +218,7 @@ Notes:
 
 - Setup: `cp ./api/.env.test.example ./api/.env.test`
 - Create test DB: `docker exec -it home_inventory_postgres createdb -U postgres home_inventory_test`
-- Populate Pinecone vars in `./api/.env.test` (`PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, optional `PINECONE_INDEX_HOST`)
+- Set `SEARCH_PROVIDER=memory` in test env (default in CI)
 - Run contract tests: `npm --prefix ./api test`
 
 ## Quality Checks
@@ -231,6 +235,8 @@ Notes:
   - `BASE_URL=https://staging-inventory.your-domain.com CHECK_UPLOADS=true ./scripts/smoke.sh`
 - With basic auth enabled:
   - `BASE_URL=https://staging-inventory.your-domain.com BASIC_AUTH_USER=<user> BASIC_AUTH_PASS=<pass> CHECK_UPLOADS=true ./scripts/smoke.sh`
+- With bearer auth + household scope:
+  - `BASE_URL=https://staging-inventory.your-domain.com AUTH_BEARER_TOKEN=<token> HOUSEHOLD_ID=<household_id> CHECK_QUANTITY=true ./scripts/smoke.sh`
 
 ## Current Migration Set
 
@@ -245,6 +251,8 @@ Notes:
 - `0009_add_item_embeddings.sql`
 - `0010_add_movement_history.sql`
 - `0011_add_location_qr_codes.sql`
+- `0012_add_item_quantity.sql`
+- `0013_add_siri_idempotency_keys.sql`
 
 ## Notes
 

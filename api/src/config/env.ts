@@ -20,6 +20,11 @@ const basicAuthUser = process.env.BASIC_AUTH_USER ?? "";
 const basicAuthPass = process.env.BASIC_AUTH_PASS ?? "";
 const sessionTtlHoursRaw = Number(process.env.SESSION_TTL_HOURS ?? "720");
 const searchProviderRaw = (process.env.SEARCH_PROVIDER ?? "pinecone").trim().toLowerCase();
+const siriRequireMutationConfirmationRaw = (
+  process.env.SIRI_REQUIRE_MUTATION_CONFIRMATION ?? "true"
+)
+  .trim()
+  .toLowerCase();
 const corsAllowOrigins = (process.env.CORS_ALLOW_ORIGINS ?? "")
   .split(",")
   .map((entry) => entry.trim())
@@ -61,19 +66,30 @@ export function resolveRequireUserAccounts(): boolean {
   return false;
 }
 
-export type SearchProvider = "pinecone";
+export type SearchProvider = "pinecone" | "memory";
 
 export function resolveSearchProvider(): SearchProvider {
-  if (searchProviderRaw === "pinecone") {
+  if (searchProviderRaw === "pinecone" || searchProviderRaw === "memory") {
     return searchProviderRaw;
   }
-  throw new Error("SEARCH_PROVIDER must be set to 'pinecone'.");
+  throw new Error("SEARCH_PROVIDER must be set to 'pinecone' or 'memory'.");
+}
+
+function resolveSiriRequireMutationConfirmation(): boolean {
+  if (siriRequireMutationConfirmationRaw === "true") {
+    return true;
+  }
+  if (siriRequireMutationConfirmationRaw === "false") {
+    return false;
+  }
+  throw new Error("SIRI_REQUIRE_MUTATION_CONFIRMATION must be true or false when set.");
 }
 
 const enableDevRoutes = resolveEnableDevRoutes();
 const requireAuth = resolveRequireAuth();
 const requireUserAccounts = resolveRequireUserAccounts();
 const searchProvider = resolveSearchProvider();
+const siriRequireMutationConfirmation = resolveSiriRequireMutationConfirmation();
 const sessionTtlHours = Number.isFinite(sessionTtlHoursRaw)
   ? Math.min(Math.max(Math.trunc(sessionTtlHoursRaw), 1), 24 * 365)
   : 720;
@@ -92,7 +108,7 @@ if (requireAuth && requireUserAccounts) {
   );
 }
 
-if (!pineconeApiKey || !pineconeIndexName) {
+if (searchProvider === "pinecone" && (!pineconeApiKey || !pineconeIndexName)) {
   throw new Error("PINECONE_API_KEY and PINECONE_INDEX_NAME are required when SEARCH_PROVIDER=pinecone");
 }
 
@@ -103,6 +119,7 @@ export const env = {
   requireAuth,
   requireUserAccounts,
   searchProvider,
+  siriRequireMutationConfirmation,
   sessionTtlHours,
   basicAuthUser,
   basicAuthPass,

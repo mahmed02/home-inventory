@@ -19,6 +19,7 @@ process.env.REQUIRE_AUTH = "false";
 process.env.REQUIRE_USER_ACCOUNTS = "false";
 process.env.AWS_REGION = "";
 process.env.S3_BUCKET = "";
+process.env.SEARCH_PROVIDER = process.env.SEARCH_PROVIDER ?? "memory";
 
 if (process.env.TEST_DATABASE_URL) {
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -94,6 +95,7 @@ async function request(
 }
 
 async function resetDatabase(): Promise<void> {
+  await pool.query("DROP TABLE IF EXISTS siri_idempotency_keys CASCADE");
   await pool.query("DROP TABLE IF EXISTS movement_history CASCADE");
   await pool.query("DROP TABLE IF EXISTS item_embeddings CASCADE");
   await pool.query("DROP TABLE IF EXISTS items CASCADE");
@@ -111,6 +113,7 @@ async function resetDatabase(): Promise<void> {
 }
 
 async function clearData(): Promise<void> {
+  await pool.query("DELETE FROM siri_idempotency_keys");
   await pool.query("DELETE FROM movement_history");
   await pool.query("DELETE FROM item_embeddings");
   await pool.query("DELETE FROM items");
@@ -1372,7 +1375,22 @@ test("GET /api/items/lookup supports quantity get/add/remove/set intents", async
   assert.equal(getCountJson.quantity, 4);
   assert.match(getCountJson.answer, /has quantity 4/i);
 
-  const addCount = await request("/api/items/lookup?q=add%203%20aa%20battery%20pack");
+  const addNeedsConfirm = await request("/api/items/lookup?q=add%203%20aa%20battery%20pack");
+  assert.equal(addNeedsConfirm.status, 200);
+  const addNeedsConfirmJson = addNeedsConfirm.json as {
+    intent: string;
+    requires_confirmation: boolean;
+    quantity: number | null;
+    answer: string;
+  };
+  assert.equal(addNeedsConfirmJson.intent, "add_item_quantity");
+  assert.equal(addNeedsConfirmJson.requires_confirmation, true);
+  assert.equal(addNeedsConfirmJson.quantity ?? null, null);
+  assert.match(addNeedsConfirmJson.answer, /confirmation required/i);
+
+  const addCount = await request(
+    "/api/items/lookup?q=add%203%20aa%20battery%20pack&confirm=true&idempotency_key=qty-add-1"
+  );
   assert.equal(addCount.status, 200);
   const addCountJson = addCount.json as {
     intent: string;
@@ -1383,7 +1401,20 @@ test("GET /api/items/lookup supports quantity get/add/remove/set intents", async
   assert.equal(addCountJson.previous_quantity, 4);
   assert.equal(addCountJson.quantity, 7);
 
-  const removeCount = await request("/api/items/lookup?q=remove%202%20aa%20battery%20pack");
+  const addCountRepeat = await request(
+    "/api/items/lookup?q=add%203%20aa%20battery%20pack&confirm=true&idempotency_key=qty-add-1"
+  );
+  assert.equal(addCountRepeat.status, 200);
+  const addCountRepeatJson = addCountRepeat.json as {
+    quantity: number | null;
+    previous_quantity: number | null;
+  };
+  assert.equal(addCountRepeatJson.previous_quantity, 4);
+  assert.equal(addCountRepeatJson.quantity, 7);
+
+  const removeCount = await request(
+    "/api/items/lookup?q=remove%202%20aa%20battery%20pack&confirm=true&idempotency_key=qty-remove-1"
+  );
   assert.equal(removeCount.status, 200);
   const removeCountJson = removeCount.json as {
     intent: string;
@@ -1395,7 +1426,7 @@ test("GET /api/items/lookup supports quantity get/add/remove/set intents", async
   assert.equal(removeCountJson.quantity, 5);
 
   const setCount = await request(
-    "/api/items/lookup?q=set%20quantity%20of%20aa%20battery%20pack%20to%209"
+    "/api/items/lookup?q=set%20quantity%20of%20aa%20battery%20pack%20to%209&confirm=true&idempotency_key=qty-set-1"
   );
   assert.equal(setCount.status, 200);
   const setCountJson = setCount.json as {

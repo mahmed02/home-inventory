@@ -37,6 +37,11 @@ type RankedRow = SemanticSearchRow & {
   token_overlap_score: number;
 };
 
+function rowSemanticTerms(row: ScopedSearchRow): Set<string> {
+  const source = `${row.name} ${row.description ?? ""} ${(row.keywords ?? []).join(" ")}`.trim();
+  return new Set(semanticQueryTerms(source));
+}
+
 function computeTokenOverlapScore(row: ScopedSearchRow, queryTerms: string[]): number {
   if (queryTerms.length === 0) {
     return 0;
@@ -53,6 +58,30 @@ function computeTokenOverlapScore(row: ScopedSearchRow, queryTerms: string[]): n
     }
   }
   return count;
+}
+
+function computeMemorySemanticScore(row: ScopedSearchRow, queryTerms: string[]): number {
+  if (queryTerms.length === 0) {
+    return 0;
+  }
+
+  const rowTerms = rowSemanticTerms(row);
+  if (rowTerms.size === 0) {
+    return 0;
+  }
+
+  let overlap = 0;
+  for (const term of queryTerms) {
+    if (rowTerms.has(term)) {
+      overlap += 1;
+    }
+  }
+
+  if (overlap === 0) {
+    return 0;
+  }
+
+  return overlap / Math.sqrt(queryTerms.length * rowTerms.size);
 }
 
 function computeLexicalScore(row: ScopedSearchRow, query: string): number {
@@ -176,6 +205,42 @@ async function fetchScopedItemsByIds(scope: InventoryScope, ids: string[]): Prom
   return result.rows;
 }
 
+async function fetchScopedItems(scope: InventoryScope): Promise<ScopedSearchRow[]> {
+  const rootScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 1);
+  const recursiveScope = inventoryScopeSql(scope, "l.household_id", "l.owner_user_id", 1);
+  const itemScope = inventoryScopeSql(scope, "i.household_id", "i.owner_user_id", 1);
+
+  const result = await pool.query<ScopedSearchRow>(
+    `
+    WITH RECURSIVE location_paths AS (
+      SELECT id, parent_id, name, name::text AS path
+      FROM locations
+      WHERE parent_id IS NULL AND ${rootScope.sql}
+      UNION ALL
+      SELECT l.id, l.parent_id, l.name, lp.path || ' > ' || l.name
+      FROM locations l
+      JOIN location_paths lp ON l.parent_id = lp.id
+      WHERE ${recursiveScope.sql}
+    )
+    SELECT
+      i.id,
+      i.name,
+      i.image_url,
+      i.quantity,
+      i.description,
+      i.keywords,
+      lp.path AS location_path
+    FROM items i
+    JOIN location_paths lp ON lp.id = i.location_id
+    WHERE ${itemScope.sql}
+    ORDER BY i.name ASC, i.id ASC
+    `,
+    rootScope.params
+  );
+
+  return result.rows;
+}
+
 async function pineconeSemanticItemSearch(params: {
   scope: InventoryScope;
   query: string;
@@ -272,6 +337,58 @@ async function pineconeSemanticItemSearch(params: {
   };
 }
 
+async function memorySemanticItemSearch(params: {
+  scope: InventoryScope;
+  query: string;
+  mode: SemanticSearchMode;
+  limit: number;
+  offset: number;
+}): Promise<SemanticSearchResult> {
+  const queryTerms = semanticQueryTerms(params.query);
+  const scopedRows = await fetchScopedItems(params.scope);
+
+  const ranked: RankedRow[] = [];
+  for (const row of scopedRows) {
+    const lexicalScore = computeLexicalScore(row, params.query);
+    const tokenOverlapScore = computeTokenOverlapScore(row, queryTerms);
+    const semanticScore = computeMemorySemanticScore(row, queryTerms);
+
+    if (!keepsResultByMode(params.mode, lexicalScore, semanticScore, tokenOverlapScore)) {
+      continue;
+    }
+
+    ranked.push({
+      id: row.id,
+      name: row.name,
+      image_url: row.image_url,
+      quantity: row.quantity,
+      location_path: row.location_path,
+      lexical_score: lexicalScore,
+      semantic_score: semanticScore,
+      score: computeRankScore(params.mode, lexicalScore, semanticScore, tokenOverlapScore),
+      token_overlap_score: tokenOverlapScore,
+    });
+  }
+
+  const pruned = sortByRank(pruneSemanticTail(ranked, params.mode));
+  const total = pruned.length;
+  const paged = pruned.slice(params.offset, params.offset + params.limit);
+
+  return {
+    total,
+    results: paged.map((row) => ({
+      id: row.id,
+      name: row.name,
+      image_url: row.image_url,
+      quantity: row.quantity,
+      location_path: row.location_path,
+      lexical_score: row.lexical_score,
+      semantic_score: row.semantic_score,
+      score: row.score,
+    })),
+  };
+}
+
 export function isSemanticSearchMode(value: string): value is SemanticSearchMode {
   return value === "hybrid" || value === "semantic" || value === "lexical";
 }
@@ -283,10 +400,13 @@ export async function semanticItemSearch(params: {
   limit: number;
   offset: number;
 }): Promise<SemanticSearchResult> {
-  if (env.searchProvider !== "pinecone") {
-    throw new Error(
-      `Unsupported SEARCH_PROVIDER=${env.searchProvider}. Semantic search requires SEARCH_PROVIDER=pinecone.`
-    );
+  if (env.searchProvider === "pinecone") {
+    return pineconeSemanticItemSearch(params);
   }
-  return pineconeSemanticItemSearch(params);
+  if (env.searchProvider === "memory") {
+    return memorySemanticItemSearch(params);
+  }
+
+  const exhaustiveCheck: never = env.searchProvider;
+  throw new Error(`Unsupported SEARCH_PROVIDER=${exhaustiveCheck}.`);
 }

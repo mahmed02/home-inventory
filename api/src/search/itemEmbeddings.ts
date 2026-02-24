@@ -1,4 +1,5 @@
 import { PoolClient } from "pg";
+import { env } from "../config/env";
 import { ItemRow } from "../types";
 import { pineconeIndex, pineconeRecordFromItem } from "./pineconeClient";
 
@@ -42,9 +43,15 @@ export async function upsertItemEmbedding(
   _queryable?: Queryable
 ): Promise<void> {
   void _queryable;
+  if (env.searchProvider !== "pinecone") {
+    return;
+  }
   await upsertPineconeItemEmbedding(item);
 }
 
 export async function deleteItemEmbedding(itemId: string): Promise<void> {
+  if (env.searchProvider !== "pinecone") {
+    return;
+  }
   await pineconeIndex().deleteOne({ id: itemId });
 }

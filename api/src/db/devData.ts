@@ -37,6 +37,7 @@ async function insertItem(
 export async function resetInventoryData(): Promise<void> {
   await pool.query("BEGIN");
   try {
+    await pool.query("DELETE FROM siri_idempotency_keys");
     await pool.query("DELETE FROM movement_history");
     await pool.query("DELETE FROM items");
     await pool.query("DELETE FROM location_qr_codes");
@@ -53,6 +54,7 @@ export async function seedInventoryData(): Promise<void> {
   try {
     await client.query("BEGIN");
 
+    await client.query("DELETE FROM siri_idempotency_keys");
     await client.query("DELETE FROM movement_history");
     await client.query("DELETE FROM items");
     await client.query("DELETE FROM location_qr_codes");
