@@ -17,9 +17,9 @@ Ticket status values:
 
 ## Active Queue (Current)
 
-1. `11-01` Mobile Architecture ADR + Bootstrap (`todo`) — next up
-2. `11-02` Shared API Client + Auth Integration (`todo`) — depends on `11-01`
-3. `11-03` Local-Only Mode Data Layer (`todo`) — depends on `11-01`
+1. `11-02` Shared API Client + Auth Integration (`todo`) — depends on `11-01`
+2. `11-03` Local-Only Mode Data Layer (`todo`) — depends on `11-01`
+3. `11-04` Cloud Sync Offline Queue + Reconciliation (`todo`) — depends on `11-02`
 
 ---
 
@@ -289,6 +289,35 @@ Status: `done`
   - Quantity can be created/edited in UI and validated.
   - Tests cover set/add/remove/get behaviors and failure paths.
 
+## 8.5-04) Semantic Provider Test/CI Reliability
+Status: `done`
+- Scope:
+  - Add deterministic in-process semantic provider for local/CI (`SEARCH_PROVIDER=memory`).
+  - Keep Pinecone as production provider.
+- Acceptance:
+  - Contract tests run without external Pinecone credentials.
+  - Semantic API behavior remains deterministic across repeated runs.
+
+## 8.5-05) Siri Quantity Confirmation + Idempotency Safety
+Status: `done`
+- Depends on: `8.5-02`
+- Scope:
+  - Require explicit confirmation for Siri quantity mutation requests.
+  - Add idempotency key persistence to prevent duplicate quantity writes.
+- Acceptance:
+  - Mutations return confirmation-required when `confirm=true` is missing.
+  - Replayed confirmed requests with the same idempotency key do not double-apply writes.
+
+## 8.5-06) Staging Smoke Hardening for Quantity Paths
+Status: `done`
+- Depends on: `8.5-01`, `8.5-05`
+- Scope:
+  - Extend smoke script with quantity endpoint checks and Siri mutation safety checks.
+  - Add bearer-auth + household header support for account-scoped staging checks.
+- Acceptance:
+  - Smoke script verifies quantity read/add/remove and Siri confirmation + idempotent replay flow.
+  - Runbook documents auth modes and quantity smoke usage.
+
 ---
 
 ## Phase 9 — Movement History
@@ -348,7 +377,7 @@ Status: `done`
 ## Phase 11 — Mobile App + Storage Modes
 
 ## 11-01) Mobile Architecture ADR + Bootstrap
-Status: `todo`
+Status: `done`
 - Scope:
   - Choose stack (`React Native` or `Flutter`) and create baseline app.
 - Acceptance:

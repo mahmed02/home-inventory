@@ -1,6 +1,6 @@
 # Home Inventory System — Execution Roadmap
 
-Last updated: **2026-02-23**
+Last updated: **2026-02-24**
 
 This roadmap tracks:
 1. Completed capabilities
@@ -127,6 +127,13 @@ This roadmap tracks:
 - [x] Quantity API operations (`get`, `set`, `add`, `remove`)
 - [x] Siri quantity intents and role-aware mutation guardrails
 - [x] UI quantity inputs for create/edit item flow
+- [x] CI-safe `memory` semantic provider for deterministic non-Pinecone test runs
+- [x] Siri quantity mutation confirmation gate (`confirm=true`) + idempotency key replay safety
+- [x] Staging smoke hardening for quantity checks (API + Siri flow)
+
+### Phase 11 — Mobile App + Storage Modes
+- [x] `11-01` mobile architecture ADR accepted
+- [x] Expo React Native TypeScript bootstrap committed (`/Users/mohammedahmed/MyProjects/home_inventory/mobile`)
 
 ---
 
@@ -159,7 +166,7 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - [x] Verification mode for expected vs actual inventory
 
 ### Phase 11 — Mobile App + Storage Modes
-- [ ] Define mobile stack (`React Native` or `Flutter`) and baseline app architecture
+- [x] Define mobile stack (`React Native`) and baseline app architecture
 - [ ] Local-only mode (single-user): on-device DB + export/import
 - [ ] Cloud mode with offline support: cached reads/writes + mutation queue + reconciliation
 - [ ] Conflict strategy for cloud mode (MVP: last-write-wins)
@@ -171,21 +178,21 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 ## 4) Next Tasks (Recommended Order)
 
 ### Queued Now
-1. `11-01` Mobile architecture ADR + bootstrap
-2. `11-02` Shared API client + mobile auth integration
-3. `11-03` Local-only mode data layer
+1. `11-02` Shared API client + mobile auth integration
+2. `11-03` Local-only mode data layer
+3. `11-04` Cloud sync offline queue + reconciliation
 
 ### Next Batch (immediately actionable)
-1. `11-01` Mobile architecture ADR + bootstrap
-2. `11-02` Shared API client + mobile auth integration
-3. `11-03` Local-only mode data layer
-4. `11-04` Cloud sync offline queue + reconciliation
-5. `11-05` Mode toggle + security baseline
+1. `11-02` Shared API client + mobile auth integration
+2. `11-03` Local-only mode data layer
+3. `11-04` Cloud sync offline queue + reconciliation
+4. `11-05` Mode toggle + security baseline
+5. Mobile sync conflict regression harness + telemetry
 
 ### Follow-up Batch
-1. `11-01` Mobile architecture ADR + bootstrap
-2. `11-02` Shared API client + mobile auth integration
-3. `11-03` Local-only mode data layer
+1. `11-03` Local-only mode data layer
+2. `11-04` Cloud sync offline queue + reconciliation
+3. `11-05` Mode toggle + security baseline
 
 ---
 
