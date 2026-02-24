@@ -56,6 +56,9 @@ Default DB URL expected by `.env.example`:
 | `SESSION_TTL_HOURS` | `720` | `720` | `720` | optional |
 | `CORS_ALLOW_ORIGINS` | empty (same-origin only) | comma-separated allowlist | comma-separated allowlist | optional |
 | `SEARCH_PROVIDER` | `memory` or `pinecone` | `pinecone` | `pinecone` | yes |
+| `SEMANTIC_CACHE_ENABLED` | `true` | `true` | `true` | optional |
+| `SEMANTIC_CACHE_FRESH_SECONDS` | `300` | `300` | `300` | optional |
+| `SEMANTIC_CACHE_STALE_IF_ERROR_SECONDS` | `86400` | `86400` | `86400` | optional |
 | `SIRI_REQUIRE_MUTATION_CONFIRMATION` | `true` | `true` | `true` | optional |
 | `APP_BASE_URL` | `http://localhost:4000` | public HTTPS staging URL | public HTTPS prod URL | yes |
 | `AWS_REGION` | `us-east-1` | deployment region | deployment region | yes |
@@ -74,6 +77,10 @@ Default DB URL expected by `.env.example`:
 Semantic search supports:
 - `SEARCH_PROVIDER=pinecone` for production-grade semantic retrieval.
 - `SEARCH_PROVIDER=memory` for deterministic local/CI runs without external credentials.
+- With Pinecone provider, semantic responses are cached in Postgres and reused as:
+  - fresh hits inside `SEMANTIC_CACHE_FRESH_SECONDS`
+  - stale-if-error fallback inside `SEMANTIC_CACHE_STALE_IF_ERROR_SECONDS` when Pinecone is unavailable.
+  - if neither live nor cached result is available, the API falls back to local memory ranking.
 
 When `REQUIRE_AUTH=true`, all endpoints except `/health` require HTTP Basic auth.
 When `REQUIRE_USER_ACCOUNTS=true`, all endpoints except `/health` and `/auth/*` require a bearer session token.
@@ -253,6 +260,7 @@ Notes:
 - `0011_add_location_qr_codes.sql`
 - `0012_add_item_quantity.sql`
 - `0013_add_siri_idempotency_keys.sql`
+- `0014_add_semantic_search_cache.sql`
 
 ## Notes
 

@@ -20,6 +20,7 @@ import { deriveThumbnailUrlFromImageUrl } from "../media/thumbnails";
 import { deleteItemEmbedding, upsertItemEmbedding } from "../search/itemEmbeddings";
 import {
   isSemanticSearchMode,
+  invalidateSemanticSearchCacheForScope,
   semanticItemSearch,
   SemanticSearchMode,
 } from "../search/semanticSearch";
@@ -139,6 +140,7 @@ itemsRouter.post("/items", async (req, res) => {
     );
 
     await upsertItemEmbedding(result.rows[0], client);
+    await invalidateSemanticSearchCacheForScope(scope, client);
     await client.query("COMMIT");
     return res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -564,6 +566,7 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     }
 
     await upsertItemEmbedding(result.rows[0], client);
+    await invalidateSemanticSearchCacheForScope(scope, client);
     await client.query("COMMIT");
     return res.status(200).json(result.rows[0]);
   } catch (error) {
@@ -671,6 +674,7 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})/quantity", async (req, res) => {
       return sendNotFound(res, "Item not found");
     }
 
+    await invalidateSemanticSearchCacheForScope(scope, client);
     await client.query("COMMIT");
     return res.status(200).json({
       item_id: updated.rows[0].id,
@@ -717,6 +721,8 @@ itemsRouter.delete("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     } catch (indexError) {
       console.error("Search index delete failed", indexError);
     }
+
+    await invalidateSemanticSearchCacheForScope(scope);
 
     return res.status(204).send();
   } catch (error) {

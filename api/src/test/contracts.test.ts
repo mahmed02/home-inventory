@@ -95,6 +95,7 @@ async function request(
 }
 
 async function resetDatabase(): Promise<void> {
+  await pool.query("DROP TABLE IF EXISTS semantic_search_cache CASCADE");
   await pool.query("DROP TABLE IF EXISTS siri_idempotency_keys CASCADE");
   await pool.query("DROP TABLE IF EXISTS movement_history CASCADE");
   await pool.query("DROP TABLE IF EXISTS item_embeddings CASCADE");
@@ -113,6 +114,7 @@ async function resetDatabase(): Promise<void> {
 }
 
 async function clearData(): Promise<void> {
+  await pool.query("DELETE FROM semantic_search_cache");
   await pool.query("DELETE FROM siri_idempotency_keys");
   await pool.query("DELETE FROM movement_history");
   await pool.query("DELETE FROM item_embeddings");

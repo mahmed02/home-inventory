@@ -16,6 +16,7 @@ import {
   inventoryScopeSql,
   resolveInventoryScope,
 } from "../auth/inventoryScope";
+import { invalidateSemanticSearchCacheForScope } from "../search/semanticSearch";
 import { LocationRow } from "../types";
 import { isUuid, normalizeOptionalText } from "../utils";
 
@@ -822,6 +823,7 @@ locationsRouter.patch("/locations/:id", async (req, res) => {
       return sendNotFound(res, "Location not found");
     }
 
+    await invalidateSemanticSearchCacheForScope(scope);
     return res.status(200).json(result.rows[0]);
   } catch (error) {
     return handleDbError(error, res);

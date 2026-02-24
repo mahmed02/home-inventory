@@ -10,6 +10,7 @@ import {
 } from "../auth/inventoryScope";
 import { createInMemoryRateLimit } from "../middleware/rateLimit";
 import { sendConflict, sendInternalError, sendValidationError } from "../middleware/http";
+import { invalidateSemanticSearchCacheForScope } from "../search/semanticSearch";
 import { ItemRow, LocationRow } from "../types";
 import { isUuid } from "../utils";
 
@@ -429,6 +430,7 @@ exportRouter.post("/import/inventory", async (req, res) => {
       await insertImportData(client, sortedLocations, items, scope);
     }
     await client.query("COMMIT");
+    await invalidateSemanticSearchCacheForScope(scope);
 
     return res.status(200).json({
       imported: true,

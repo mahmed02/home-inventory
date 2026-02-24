@@ -37,6 +37,284 @@ type RankedRow = SemanticSearchRow & {
   token_overlap_score: number;
 };
 
+const MAX_CACHEABLE_QUERY_LENGTH = 512;
+const UNDEFINED_TABLE_ERROR = "42P01";
+
+type SemanticCacheLookupParams = {
+  scope: InventoryScope;
+  query: string;
+  mode: SemanticSearchMode;
+  limit: number;
+  offset: number;
+};
+
+type ParsedCacheKey = {
+  scopeKey: string;
+  normalizedQuery: string;
+  mode: SemanticSearchMode;
+  limit: number;
+  offset: number;
+};
+
+type Queryable = Pick<typeof pool, "query">;
+
+function semanticCacheScopeKey(scope: InventoryScope): string {
+  if (scope.householdId) {
+    return `household:${scope.householdId}`;
+  }
+  if (scope.ownerUserId) {
+    return `owner:${scope.ownerUserId}`;
+  }
+  return "legacy:unscoped";
+}
+
+function normalizeCacheQuery(query: string): string {
+  return query.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getDbErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+  const candidate = error as { code?: unknown };
+  if (typeof candidate.code !== "string") {
+    return null;
+  }
+  return candidate.code;
+}
+
+function parseCacheKey(params: SemanticCacheLookupParams): ParsedCacheKey | null {
+  if (!env.semanticCacheEnabled) {
+    return null;
+  }
+
+  const normalizedQuery = normalizeCacheQuery(params.query);
+  if (!normalizedQuery || normalizedQuery.length > MAX_CACHEABLE_QUERY_LENGTH) {
+    return null;
+  }
+
+  return {
+    scopeKey: semanticCacheScopeKey(params.scope),
+    normalizedQuery,
+    mode: params.mode,
+    limit: params.limit,
+    offset: params.offset,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object";
+}
+
+function parseCachedSemanticResult(payload: unknown): SemanticSearchResult | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const total = payload.total;
+  const results = payload.results;
+  if (typeof total !== "number" || !Number.isFinite(total) || !Array.isArray(results)) {
+    return null;
+  }
+
+  const parsedRows: SemanticSearchRow[] = [];
+  for (const row of results) {
+    if (!isRecord(row)) {
+      return null;
+    }
+
+    const id = row.id;
+    const name = row.name;
+    const imageUrl = row.image_url;
+    const quantity = row.quantity;
+    const locationPath = row.location_path;
+    const lexicalScore = row.lexical_score;
+    const semanticScore = row.semantic_score;
+    const score = row.score;
+
+    const hasValidShape =
+      typeof id === "string" &&
+      typeof name === "string" &&
+      (typeof imageUrl === "string" || imageUrl === null) &&
+      (typeof quantity === "number" || quantity === null) &&
+      typeof locationPath === "string" &&
+      typeof lexicalScore === "number" &&
+      typeof semanticScore === "number" &&
+      typeof score === "number";
+
+    if (!hasValidShape) {
+      return null;
+    }
+
+    parsedRows.push({
+      id,
+      name,
+      image_url: imageUrl,
+      quantity,
+      location_path: locationPath,
+      lexical_score: lexicalScore,
+      semantic_score: semanticScore,
+      score,
+    });
+  }
+
+  return {
+    total,
+    results: parsedRows,
+  };
+}
+
+async function readSemanticSearchCache(
+  params: SemanticCacheLookupParams,
+  allowStale: boolean
+): Promise<SemanticSearchResult | null> {
+  const key = parseCacheKey(params);
+  if (!key) {
+    return null;
+  }
+
+  const freshnessColumn = allowStale ? "stale_until" : "fresh_until";
+  const result = await pool.query<{ response_payload: unknown }>(
+    `
+    SELECT response_payload
+    FROM semantic_search_cache
+    WHERE
+      scope_key = $1
+      AND normalized_query = $2
+      AND mode = $3
+      AND limit_count = $4
+      AND offset_count = $5
+      AND ${freshnessColumn} > now()
+    LIMIT 1
+    `,
+    [key.scopeKey, key.normalizedQuery, key.mode, key.limit, key.offset]
+  );
+
+  if ((result.rowCount ?? 0) === 0) {
+    return null;
+  }
+
+  return parseCachedSemanticResult(result.rows[0].response_payload);
+}
+
+async function writeSemanticSearchCache(
+  params: SemanticCacheLookupParams,
+  payload: SemanticSearchResult
+): Promise<void> {
+  const key = parseCacheKey(params);
+  if (!key) {
+    return;
+  }
+
+  await pool.query(
+    `
+    DELETE FROM semantic_search_cache
+    WHERE stale_until <= now()
+    `
+  );
+
+  await pool.query(
+    `
+    INSERT INTO semantic_search_cache(
+      scope_key,
+      normalized_query,
+      mode,
+      limit_count,
+      offset_count,
+      response_payload,
+      fresh_until,
+      stale_until
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6::jsonb,
+      now() + ($7 * interval '1 second'),
+      now() + ($8 * interval '1 second')
+    )
+    ON CONFLICT (scope_key, normalized_query, mode, limit_count, offset_count)
+    DO UPDATE SET
+      response_payload = EXCLUDED.response_payload,
+      fresh_until = EXCLUDED.fresh_until,
+      stale_until = EXCLUDED.stale_until,
+      updated_at = now()
+    `,
+    [
+      key.scopeKey,
+      key.normalizedQuery,
+      key.mode,
+      key.limit,
+      key.offset,
+      JSON.stringify(payload),
+      env.semanticCacheFreshSeconds,
+      env.semanticCacheStaleIfErrorSeconds,
+    ]
+  );
+}
+
+async function deleteSemanticSearchCacheByScope(
+  scope: InventoryScope,
+  queryable: Queryable = pool
+): Promise<void> {
+  if (!env.semanticCacheEnabled) {
+    return;
+  }
+
+  await queryable.query(
+    `
+    DELETE FROM semantic_search_cache
+    WHERE scope_key = $1
+    `,
+    [semanticCacheScopeKey(scope)]
+  );
+}
+
+async function safeReadSemanticSearchCache(
+  params: SemanticCacheLookupParams,
+  allowStale: boolean
+): Promise<SemanticSearchResult | null> {
+  try {
+    return await readSemanticSearchCache(params, allowStale);
+  } catch (error) {
+    if (getDbErrorCode(error) === UNDEFINED_TABLE_ERROR) {
+      return null;
+    }
+    console.error("semantic cache read failed", error);
+    return null;
+  }
+}
+
+async function safeWriteSemanticSearchCache(
+  params: SemanticCacheLookupParams,
+  payload: SemanticSearchResult
+): Promise<void> {
+  try {
+    await writeSemanticSearchCache(params, payload);
+  } catch (error) {
+    if (getDbErrorCode(error) === UNDEFINED_TABLE_ERROR) {
+      return;
+    }
+    console.error("semantic cache write failed", error);
+  }
+}
+
+export async function invalidateSemanticSearchCacheForScope(
+  scope: InventoryScope,
+  queryable: Queryable = pool
+): Promise<void> {
+  try {
+    await deleteSemanticSearchCacheByScope(scope, queryable);
+  } catch (error) {
+    if (getDbErrorCode(error) === UNDEFINED_TABLE_ERROR) {
+      return;
+    }
+    console.error("semantic cache invalidation failed", error);
+  }
+}
+
 function rowSemanticTerms(row: ScopedSearchRow): Set<string> {
   const source = `${row.name} ${row.description ?? ""} ${(row.keywords ?? []).join(" ")}`.trim();
   return new Set(semanticQueryTerms(source));
@@ -401,7 +679,25 @@ export async function semanticItemSearch(params: {
   offset: number;
 }): Promise<SemanticSearchResult> {
   if (env.searchProvider === "pinecone") {
-    return pineconeSemanticItemSearch(params);
+    const freshCached = await safeReadSemanticSearchCache(params, false);
+    if (freshCached) {
+      return freshCached;
+    }
+
+    try {
+      const liveResult = await pineconeSemanticItemSearch(params);
+      await safeWriteSemanticSearchCache(params, liveResult);
+      return liveResult;
+    } catch (error) {
+      console.error("pinecone semantic search failed; attempting fallback", error);
+
+      const staleCached = await safeReadSemanticSearchCache(params, true);
+      if (staleCached) {
+        return staleCached;
+      }
+
+      return memorySemanticItemSearch(params);
+    }
   }
   if (env.searchProvider === "memory") {
     return memorySemanticItemSearch(params);

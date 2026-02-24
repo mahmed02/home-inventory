@@ -1,6 +1,20 @@
 import { PoolClient } from "pg";
 import { pool } from "./pool";
 
+type Queryable = Pick<PoolClient, "query">;
+
+async function deleteOptionalTableRows(queryable: Queryable, tableName: string): Promise<void> {
+  try {
+    await queryable.query(`DELETE FROM ${tableName}`);
+  } catch (error) {
+    const code = (error as { code?: string } | null)?.code;
+    if (code === "42P01") {
+      return;
+    }
+    throw error;
+  }
+}
+
 async function insertLocation(
   client: PoolClient,
   params: { name: string; code: string; type: string; parentId: string | null }
@@ -37,7 +51,8 @@ async function insertItem(
 export async function resetInventoryData(): Promise<void> {
   await pool.query("BEGIN");
   try {
-    await pool.query("DELETE FROM siri_idempotency_keys");
+    await deleteOptionalTableRows(pool, "semantic_search_cache");
+    await deleteOptionalTableRows(pool, "siri_idempotency_keys");
     await pool.query("DELETE FROM movement_history");
     await pool.query("DELETE FROM items");
     await pool.query("DELETE FROM location_qr_codes");
@@ -54,7 +69,8 @@ export async function seedInventoryData(): Promise<void> {
   try {
     await client.query("BEGIN");
 
-    await client.query("DELETE FROM siri_idempotency_keys");
+    await deleteOptionalTableRows(client, "semantic_search_cache");
+    await deleteOptionalTableRows(client, "siri_idempotency_keys");
     await client.query("DELETE FROM movement_history");
     await client.query("DELETE FROM items");
     await client.query("DELETE FROM location_qr_codes");

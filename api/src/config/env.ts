@@ -25,6 +25,11 @@ const siriRequireMutationConfirmationRaw = (
 )
   .trim()
   .toLowerCase();
+const semanticCacheEnabledRaw = (process.env.SEMANTIC_CACHE_ENABLED ?? "true").trim().toLowerCase();
+const semanticCacheFreshSecondsRaw = Number(process.env.SEMANTIC_CACHE_FRESH_SECONDS ?? "300");
+const semanticCacheStaleIfErrorSecondsRaw = Number(
+  process.env.SEMANTIC_CACHE_STALE_IF_ERROR_SECONDS ?? "86400"
+);
 const corsAllowOrigins = (process.env.CORS_ALLOW_ORIGINS ?? "")
   .split(",")
   .map((entry) => entry.trim())
@@ -85,11 +90,53 @@ function resolveSiriRequireMutationConfirmation(): boolean {
   throw new Error("SIRI_REQUIRE_MUTATION_CONFIRMATION must be true or false when set.");
 }
 
+function resolveSemanticCacheEnabled(): boolean {
+  if (semanticCacheEnabledRaw === "true") {
+    return true;
+  }
+  if (semanticCacheEnabledRaw === "false") {
+    return false;
+  }
+  throw new Error("SEMANTIC_CACHE_ENABLED must be true or false when set.");
+}
+
+function resolvePositiveSeconds(
+  rawValue: number,
+  name: string,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  if (!Number.isFinite(rawValue)) {
+    return fallback;
+  }
+  const normalized = Math.trunc(rawValue);
+  if (normalized < min || normalized > max) {
+    throw new Error(`${name} must be between ${min} and ${max} seconds.`);
+  }
+  return normalized;
+}
+
 const enableDevRoutes = resolveEnableDevRoutes();
 const requireAuth = resolveRequireAuth();
 const requireUserAccounts = resolveRequireUserAccounts();
 const searchProvider = resolveSearchProvider();
 const siriRequireMutationConfirmation = resolveSiriRequireMutationConfirmation();
+const semanticCacheEnabled = resolveSemanticCacheEnabled();
+const semanticCacheFreshSeconds = resolvePositiveSeconds(
+  semanticCacheFreshSecondsRaw,
+  "SEMANTIC_CACHE_FRESH_SECONDS",
+  300,
+  1,
+  7 * 24 * 60 * 60
+);
+const semanticCacheStaleIfErrorSeconds = resolvePositiveSeconds(
+  semanticCacheStaleIfErrorSecondsRaw,
+  "SEMANTIC_CACHE_STALE_IF_ERROR_SECONDS",
+  86400,
+  semanticCacheFreshSeconds,
+  30 * 24 * 60 * 60
+);
 const sessionTtlHours = Number.isFinite(sessionTtlHoursRaw)
   ? Math.min(Math.max(Math.trunc(sessionTtlHoursRaw), 1), 24 * 365)
   : 720;
@@ -120,6 +167,9 @@ export const env = {
   requireUserAccounts,
   searchProvider,
   siriRequireMutationConfirmation,
+  semanticCacheEnabled,
+  semanticCacheFreshSeconds,
+  semanticCacheStaleIfErrorSeconds,
   sessionTtlHours,
   basicAuthUser,
   basicAuthPass,
