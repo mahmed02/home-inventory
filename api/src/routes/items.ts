@@ -7,7 +7,9 @@ import {
 } from "../middleware/http";
 import {
   asKeywords,
+  asOptionalNonNegativeInteger,
   asOptionalText,
+  asRequiredPositiveInteger,
   asRequiredText,
   asRequiredUuid,
 } from "../middleware/validation";
@@ -31,6 +33,7 @@ import {
 import { isUuid, normalizeOptionalText, readLimitOffset } from "../utils";
 
 const itemsRouter = Router();
+const MAX_DB_INT = 2_147_483_647;
 
 async function resolveScope(req: Request, res: Response) {
   const scopeResult = await resolveInventoryScope(req);
@@ -81,6 +84,11 @@ itemsRouter.post("/items", async (req, res) => {
   const imageUrl = asOptionalText(req.body.image_url);
   const locationId = asRequiredUuid(req.body.location_id);
   const keywords = asKeywords(req.body.keywords) ?? [];
+  const quantity = asOptionalNonNegativeInteger(req.body.quantity);
+
+  if (quantity === "INVALID") {
+    return sendValidationError(res, "quantity must be a non-negative integer or null");
+  }
 
   if (!name || locationId === "INVALID") {
     return sendValidationError(res, "name and location_id are required");
@@ -118,15 +126,16 @@ itemsRouter.post("/items", async (req, res) => {
         name,
         description,
         keywords,
+        quantity,
         location_id,
         image_url,
         owner_user_id,
         household_id
       )
-      VALUES ($1, $2, $3::text[], $4, $5, $6, $7)
+      VALUES ($1, $2, $3::text[], $4, $5, $6, $7, $8)
       RETURNING *
       `,
-      [name, description, keywords, locationId, imageUrl, scope.ownerUserId, scope.householdId]
+      [name, description, keywords, quantity, locationId, imageUrl, scope.ownerUserId, scope.householdId]
     );
 
     await upsertItemEmbedding(result.rows[0], client);
@@ -166,6 +175,43 @@ itemsRouter.get("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     }
 
     return res.status(200).json(result.rows[0]);
+  } catch (error) {
+    return sendInternalError(error, res);
+  }
+});
+
+itemsRouter.get("/items/:id([0-9a-fA-F-]{36})/quantity", async (req, res) => {
+  const id = req.params.id;
+  if (!isUuid(id)) {
+    return sendValidationError(res, "Invalid item id");
+  }
+
+  try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+
+    const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const result = await pool.query<{ id: string; name: string; quantity: number | null }>(
+      `
+      SELECT id, name, quantity
+      FROM items
+      WHERE id = $1 AND ${itemScope.sql}
+      LIMIT 1
+      `,
+      [id, ...itemScope.params]
+    );
+    if (result.rowCount === 0) {
+      return sendNotFound(res, "Item not found");
+    }
+
+    const row = result.rows[0];
+    return res.status(200).json({
+      item_id: row.id,
+      item_name: row.name,
+      quantity: row.quantity ?? null,
+    });
   } catch (error) {
     return sendInternalError(error, res);
   }
@@ -424,6 +470,14 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
     updates.push({ key: "image_url", value: normalizeOptionalText(req.body.image_url) });
   }
 
+  if ("quantity" in req.body) {
+    const quantity = asOptionalNonNegativeInteger(req.body.quantity);
+    if (quantity === "INVALID") {
+      return sendValidationError(res, "quantity must be a non-negative integer or null");
+    }
+    updates.push({ key: "quantity", value: quantity });
+  }
+
   if (updates.length === 0) {
     return sendValidationError(res, "No valid fields provided");
   }
@@ -520,6 +574,120 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
   }
 });
 
+itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})/quantity", async (req, res) => {
+  const id = req.params.id;
+  if (!isUuid(id)) {
+    return sendValidationError(res, "Invalid item id");
+  }
+
+  const opRaw = normalizeOptionalText(req.body.op)?.toLowerCase() ?? "";
+  if (opRaw !== "set" && opRaw !== "add" && opRaw !== "remove") {
+    return sendValidationError(res, "op must be one of: set, add, remove");
+  }
+
+  let setQuantity: number | null = null;
+  let amount: number | null = null;
+
+  if (opRaw === "set") {
+    const parsed = asOptionalNonNegativeInteger(req.body.quantity);
+    if (parsed === "INVALID" || parsed === null) {
+      return sendValidationError(res, "quantity must be a non-negative integer for op=set");
+    }
+    setQuantity = parsed;
+  } else {
+    const parsed = asRequiredPositiveInteger(req.body.amount ?? req.body.quantity);
+    if (parsed === "INVALID") {
+      return sendValidationError(
+        res,
+        "amount must be a positive integer for op=add/remove"
+      );
+    }
+    amount = parsed;
+  }
+
+  const client = await pool.connect();
+  try {
+    const scope = await resolveScope(req, res);
+    if (!scope) {
+      return;
+    }
+    if (!ensureWriteAccess(scope, res)) {
+      return;
+    }
+
+    await client.query("BEGIN");
+    const itemScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 2);
+    const current = await client.query<{ id: string; name: string; quantity: number | null }>(
+      `
+      SELECT id, name, quantity
+      FROM items
+      WHERE id = $1 AND ${itemScope.sql}
+      FOR UPDATE
+      `,
+      [id, ...itemScope.params]
+    );
+
+    if (current.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return sendNotFound(res, "Item not found");
+    }
+
+    const currentRow = current.rows[0];
+    const previousQuantity = currentRow.quantity ?? null;
+    const baseQuantity = previousQuantity ?? 0;
+
+    let nextQuantity = baseQuantity;
+    if (opRaw === "set") {
+      nextQuantity = setQuantity ?? 0;
+    } else if (opRaw === "add") {
+      nextQuantity = baseQuantity + (amount ?? 0);
+      if (nextQuantity > MAX_DB_INT) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "Quantity exceeds maximum supported value" });
+      }
+    } else {
+      const delta = amount ?? 0;
+      if (delta > baseQuantity) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          error: `Cannot remove ${delta}; current quantity is ${baseQuantity}`,
+        });
+      }
+      nextQuantity = baseQuantity - delta;
+    }
+
+    const updated = await client.query<{ id: string; name: string; quantity: number | null }>(
+      `
+      UPDATE items
+      SET quantity = $1
+      WHERE id = $2 AND ${itemScope.sql}
+      RETURNING id, name, quantity
+      `,
+      [nextQuantity, id, ...itemScope.params]
+    );
+
+    if (updated.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return sendNotFound(res, "Item not found");
+    }
+
+    await client.query("COMMIT");
+    return res.status(200).json({
+      item_id: updated.rows[0].id,
+      item_name: updated.rows[0].name,
+      op: opRaw,
+      amount,
+      previous_quantity: previousQuantity,
+      quantity: updated.rows[0].quantity ?? null,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    return sendInternalError(error, res);
+  } finally {
+    client.release();
+  }
+});
+
 itemsRouter.delete("/items/:id([0-9a-fA-F-]{36})", async (req, res) => {
   const id = req.params.id;
   if (!isUuid(id)) {
@@ -579,6 +747,7 @@ itemsRouter.get("/items/search", async (req, res) => {
       name: string;
       location_path: string;
       image_url: string | null;
+      quantity: number | null;
       total_count: string;
     }>(
       `
@@ -593,7 +762,7 @@ itemsRouter.get("/items/search", async (req, res) => {
         WHERE ${recursiveScope.sql}
       ),
       filtered AS (
-        SELECT i.id, i.name, i.image_url, lp.path AS location_path
+        SELECT i.id, i.name, i.image_url, i.quantity, lp.path AS location_path
         FROM items i
         JOIN location_paths lp ON lp.id = i.location_id
         WHERE
@@ -603,7 +772,7 @@ itemsRouter.get("/items/search", async (req, res) => {
             array_to_string(i.keywords, ' ') ILIKE $1
           )
       )
-      SELECT id, name, image_url, location_path, COUNT(*) OVER()::text AS total_count
+      SELECT id, name, image_url, quantity, location_path, COUNT(*) OVER()::text AS total_count
       FROM filtered
       ORDER BY name ASC
       LIMIT $3 OFFSET $4
@@ -617,6 +786,7 @@ itemsRouter.get("/items/search", async (req, res) => {
       name: row.name,
       image_url: row.image_url,
       thumbnail_url: deriveThumbnailUrlFromImageUrl(row.image_url, env.s3Bucket, env.awsRegion),
+      quantity: row.quantity ?? null,
       location_path: row.location_path,
     }));
 
@@ -661,6 +831,7 @@ itemsRouter.get("/items/search/semantic", async (req, res) => {
       name: row.name,
       image_url: row.image_url,
       thumbnail_url: deriveThumbnailUrlFromImageUrl(row.image_url, env.s3Bucket, env.awsRegion),
+      quantity: row.quantity ?? null,
       location_path: row.location_path,
       score: row.score,
       lexical_score: row.lexical_score,

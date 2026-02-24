@@ -19,6 +19,7 @@ export type ItemRow = {
   name: string;
   description: string | null;
   keywords: string[];
+  quantity?: number | null;
   location_id: string;
   image_url: string | null;
   owner_user_id?: string | null;

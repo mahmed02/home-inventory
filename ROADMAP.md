@@ -122,6 +122,12 @@ This roadmap tracks:
 - [x] Siri lookup aligned to conversational answer path
 - [x] Safer fallback behavior and unsupported-action guardrails
 
+### Phase 8.5 — Inventory Quantity Tracking + Siri Actions
+- [x] Optional quantity field on items with non-negative validation
+- [x] Quantity API operations (`get`, `set`, `add`, `remove`)
+- [x] Siri quantity intents and role-aware mutation guardrails
+- [x] UI quantity inputs for create/edit item flow
+
 ---
 
 ## 2) MVP Gap Status
@@ -135,6 +141,11 @@ This roadmap tracks:
 ## 3) Post-MVP Backlog
 
 Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICKETS.md`
+
+### Phase 8.5 — Inventory Quantity Tracking + Siri Actions
+- [x] Quantity schema migration + API endpoints
+- [x] Siri get/set/add/remove quantity support
+- [x] Contract tests + UI support for quantity fields
 
 ### Phase 9 — Movement History
 - [x] `movement_history` table

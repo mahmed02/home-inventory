@@ -1328,8 +1328,92 @@ test("GET /api/items/lookup handles unsupported action requests safely", async (
   assert.equal(payload.item, null);
   assert.equal(payload.location_path, null);
   assert.equal(payload.requires_confirmation, true);
-  assert.match(payload.answer, /can't make inventory changes from Siri yet/i);
+  assert.match(payload.answer, /can't move or rename inventory from Siri yet/i);
   assert.match(payload.notes, /Unsupported action request/i);
+});
+
+test("GET /api/items/lookup supports quantity get/add/remove/set intents", async () => {
+  const root = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: rootId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const item = await request("/items", {
+    method: "POST",
+    body: {
+      name: "AA Battery Pack",
+      keywords: ["battery", "aa"],
+      quantity: 4,
+      location_id: garageId,
+    },
+  });
+  assert.equal(item.status, 201);
+  const itemId = (item.json as { id: string }).id;
+
+  const getCount = await request("/api/items/lookup?q=get%20count%20of%20aa%20battery%20pack");
+  assert.equal(getCount.status, 200);
+  const getCountJson = getCount.json as {
+    intent: string;
+    fallback: boolean;
+    quantity: number | null;
+    answer: string;
+  };
+  assert.equal(getCountJson.intent, "get_item_quantity");
+  assert.equal(getCountJson.fallback, false);
+  assert.equal(getCountJson.quantity, 4);
+  assert.match(getCountJson.answer, /has quantity 4/i);
+
+  const addCount = await request("/api/items/lookup?q=add%203%20aa%20battery%20pack");
+  assert.equal(addCount.status, 200);
+  const addCountJson = addCount.json as {
+    intent: string;
+    quantity: number | null;
+    previous_quantity: number | null;
+  };
+  assert.equal(addCountJson.intent, "add_item_quantity");
+  assert.equal(addCountJson.previous_quantity, 4);
+  assert.equal(addCountJson.quantity, 7);
+
+  const removeCount = await request("/api/items/lookup?q=remove%202%20aa%20battery%20pack");
+  assert.equal(removeCount.status, 200);
+  const removeCountJson = removeCount.json as {
+    intent: string;
+    quantity: number | null;
+    previous_quantity: number | null;
+  };
+  assert.equal(removeCountJson.intent, "remove_item_quantity");
+  assert.equal(removeCountJson.previous_quantity, 7);
+  assert.equal(removeCountJson.quantity, 5);
+
+  const setCount = await request(
+    "/api/items/lookup?q=set%20quantity%20of%20aa%20battery%20pack%20to%209"
+  );
+  assert.equal(setCount.status, 200);
+  const setCountJson = setCount.json as {
+    intent: string;
+    quantity: number | null;
+    previous_quantity: number | null;
+  };
+  assert.equal(setCountJson.intent, "set_item_quantity");
+  assert.equal(setCountJson.previous_quantity, 5);
+  assert.equal(setCountJson.quantity, 9);
+
+  const quantity = await request(`/items/${itemId}/quantity`);
+  assert.equal(quantity.status, 200);
+  assert.deepEqual(quantity.json, {
+    item_id: itemId,
+    item_name: "AA Battery Pack",
+    quantity: 9,
+  });
 });
 
 test("POST /uploads/presign validates request and reports missing config", async () => {
@@ -1456,6 +1540,100 @@ test("PATCH/DELETE item flow works end-to-end", async () => {
 
   const afterDelete = await request(`/items/${itemId}`);
   assert.equal(afterDelete.status, 404);
+});
+
+test("Item quantity API supports read and set/add/remove operations", async () => {
+  const root = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "H1", type: "house", parent_id: null },
+  });
+  assert.equal(root.status, 201);
+  const rootId = (root.json as { id: string }).id;
+
+  const garage = await request("/locations", {
+    method: "POST",
+    body: { name: "Garage", code: "G1", type: "room", parent_id: rootId },
+  });
+  assert.equal(garage.status, 201);
+  const garageId = (garage.json as { id: string }).id;
+
+  const item = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Zip Ties",
+      keywords: ["ties", "shop"],
+      location_id: garageId,
+    },
+  });
+  assert.equal(item.status, 201);
+  const itemId = (item.json as { id: string }).id;
+
+  const initial = await request(`/items/${itemId}/quantity`);
+  assert.equal(initial.status, 200);
+  assert.deepEqual(initial.json, {
+    item_id: itemId,
+    item_name: "Zip Ties",
+    quantity: null,
+  });
+
+  const add = await request(`/items/${itemId}/quantity`, {
+    method: "PATCH",
+    body: { op: "add", amount: 3 },
+  });
+  assert.equal(add.status, 200);
+  assert.deepEqual(add.json, {
+    item_id: itemId,
+    item_name: "Zip Ties",
+    op: "add",
+    amount: 3,
+    previous_quantity: null,
+    quantity: 3,
+  });
+
+  const remove = await request(`/items/${itemId}/quantity`, {
+    method: "PATCH",
+    body: { op: "remove", amount: 2 },
+  });
+  assert.equal(remove.status, 200);
+  assert.deepEqual(remove.json, {
+    item_id: itemId,
+    item_name: "Zip Ties",
+    op: "remove",
+    amount: 2,
+    previous_quantity: 3,
+    quantity: 1,
+  });
+
+  const set = await request(`/items/${itemId}/quantity`, {
+    method: "PATCH",
+    body: { op: "set", quantity: 10 },
+  });
+  assert.equal(set.status, 200);
+  assert.deepEqual(set.json, {
+    item_id: itemId,
+    item_name: "Zip Ties",
+    op: "set",
+    amount: null,
+    previous_quantity: 1,
+    quantity: 10,
+  });
+
+  const removeTooMuch = await request(`/items/${itemId}/quantity`, {
+    method: "PATCH",
+    body: { op: "remove", amount: 11 },
+  });
+  assert.equal(removeTooMuch.status, 409);
+  assert.deepEqual(removeTooMuch.json, {
+    error: "Cannot remove 11; current quantity is 10",
+  });
+
+  const clear = await request(`/items/${itemId}`, {
+    method: "PATCH",
+    body: { quantity: null },
+  });
+  assert.equal(clear.status, 200);
+  const clearJson = clear.json as { quantity: number | null };
+  assert.equal(clearJson.quantity, null);
 });
 
 test("GET /items/:id/history returns chronological events with optional date filtering", async () => {

@@ -258,6 +258,39 @@ Status: `done`
 
 ---
 
+## Phase 8.5 — Quantity Tracking + Siri Count Actions
+
+## 8.5-01) Item Quantity Schema + API
+Status: `done`
+- Scope:
+  - Add optional `quantity` field to items.
+  - Add quantity endpoints to read/update counts with `set|add|remove`.
+- Acceptance:
+  - Quantity is nullable and non-negative.
+  - API enforces bounds and denies negative outcomes.
+
+## 8.5-02) Siri Quantity Intents
+Status: `done`
+- Depends on: `8.5-01`
+- Scope:
+  - Add intent parsing for `get`, `set`, `add`, `remove` quantity operations.
+  - Enforce role-aware write checks for mutation intents.
+- Acceptance:
+  - Siri endpoint returns deterministic quantity responses for supported prompts.
+  - Read-only users cannot mutate quantity via Siri actions.
+
+## 8.5-03) Quantity UI + Contract Coverage
+Status: `done`
+- Depends on: `8.5-01`, `8.5-02`
+- Scope:
+  - Add optional quantity fields in create/edit item forms.
+  - Add contract tests for quantity API and Siri quantity flows.
+- Acceptance:
+  - Quantity can be created/edited in UI and validated.
+  - Tests cover set/add/remove/get behaviors and failure paths.
+
+---
+
 ## Phase 9 — Movement History
 
 ## 9-01) Movement History Schema + Write Path

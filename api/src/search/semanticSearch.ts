@@ -11,6 +11,7 @@ export type SemanticSearchRow = {
   id: string;
   name: string;
   image_url: string | null;
+  quantity: number | null;
   location_path: string;
   lexical_score: number;
   semantic_score: number;
@@ -26,6 +27,7 @@ type ScopedSearchRow = {
   id: string;
   name: string;
   image_url: string | null;
+  quantity: number | null;
   description: string | null;
   keywords: string[];
   location_path: string;
@@ -160,6 +162,7 @@ async function fetchScopedItemsByIds(scope: InventoryScope, ids: string[]): Prom
       i.id,
       i.name,
       i.image_url,
+      i.quantity,
       i.description,
       i.keywords,
       lp.path AS location_path
@@ -241,6 +244,7 @@ async function pineconeSemanticItemSearch(params: {
       id: row.id,
       name: row.name,
       image_url: row.image_url,
+      quantity: row.quantity,
       location_path: row.location_path,
       lexical_score: lexicalScore,
       semantic_score: semanticScore,
@@ -259,6 +263,7 @@ async function pineconeSemanticItemSearch(params: {
       id: row.id,
       name: row.name,
       image_url: row.image_url,
+      quantity: row.quantity,
       location_path: row.location_path,
       lexical_score: row.lexical_score,
       semantic_score: row.semantic_score,

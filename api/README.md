@@ -114,9 +114,11 @@ For the full step-by-step runbook, use:
 - `DELETE /locations/:id`
 - `POST /items`
 - `GET /items/:id`
+- `GET /items/:id/quantity`
 - `GET /items/:id/history?from=&to=&limit=&offset=`
 - `GET /items?location_id=&limit=&offset=`
 - `PATCH /items/:id`
+- `PATCH /items/:id/quantity`
 - `DELETE /items/:id`
 - `GET /items/search?q=&limit=&offset=`
 - `GET /items/search/semantic?q=&mode=&limit=&offset=`

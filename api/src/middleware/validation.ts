@@ -30,3 +30,44 @@ export function asKeywords(value: unknown): string[] | null {
   }
   return value.filter((k: unknown): k is string => typeof k === "string");
 }
+
+function parseIntegerValue(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? value : null;
+  }
+
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) {
+    return null;
+  }
+
+  if (!/^-?\d+$/.test(normalized)) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed)) {
+    return null;
+  }
+
+  return parsed;
+}
+
+export function asOptionalNonNegativeInteger(value: unknown): number | null | "INVALID" {
+  if (value === null || typeof value === "undefined") {
+    return null;
+  }
+  const parsed = parseIntegerValue(value);
+  if (parsed === null || parsed < 0) {
+    return "INVALID";
+  }
+  return parsed;
+}
+
+export function asRequiredPositiveInteger(value: unknown): number | "INVALID" {
+  const parsed = parseIntegerValue(value);
+  if (parsed === null || parsed <= 0) {
+    return "INVALID";
+  }
+  return parsed;
+}

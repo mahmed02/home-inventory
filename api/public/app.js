@@ -94,6 +94,7 @@ const locParentSelect = document.getElementById("locParentId");
 
 const itemNameInput = document.getElementById("itemName");
 const itemDescriptionInput = document.getElementById("itemDescription");
+const itemQuantityInput = document.getElementById("itemQuantity");
 const itemKeywordsInput = document.getElementById("itemKeywords");
 const itemImageUrlInput = document.getElementById("itemImageUrl");
 const itemImageFileInput = document.getElementById("itemImageFile");
@@ -116,6 +117,7 @@ const cancelMoveImpactBtn = document.getElementById("cancelMoveImpactBtn");
 
 const editItemNameInput = document.getElementById("editItemName");
 const editItemDescriptionInput = document.getElementById("editItemDescription");
+const editItemQuantityInput = document.getElementById("editItemQuantity");
 const editItemKeywordsInput = document.getElementById("editItemKeywords");
 const editItemImageUrlInput = document.getElementById("editItemImageUrl");
 const editItemImageFileInput = document.getElementById("editItemImageFile");
@@ -1117,6 +1119,20 @@ function parseKeywords(raw) {
     .filter((k) => k.length > 0);
 }
 
+function parseOptionalQuantityInput(raw) {
+  const normalized = String(raw ?? "").trim();
+  if (!normalized) {
+    return { ok: true, value: null };
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return { ok: false, message: "Quantity must be a non-negative whole number." };
+  }
+
+  return { ok: true, value: parsed };
+}
+
 function renderLocationOptions(selectEl, options, placeholder, selectedValue = "") {
   const rows = [`<option value="">${escapeHtml(placeholder)}</option>`];
   for (const loc of options) {
@@ -1185,7 +1201,11 @@ function buildTextTree() {
       if (entry.kind === "location") {
         appendNode(entry.data, nextPrefix, childLast);
       } else {
-        lines.push(`${nextPrefix}${childLast ? "`-- " : "|-- "}[item] ${entry.data.name}`);
+        const quantitySuffix =
+          typeof entry.data.quantity === "number" ? ` (qty ${entry.data.quantity})` : "";
+        lines.push(
+          `${nextPrefix}${childLast ? "`-- " : "|-- "}[item] ${entry.data.name}${quantitySuffix}`
+        );
       }
     });
   }
@@ -1206,7 +1226,9 @@ function buildTextTree() {
       if (entry.kind === "location") {
         appendNode(entry.data, "", childLast);
       } else {
-        lines.push(`${childLast ? "`-- " : "|-- "}[item] ${entry.data.name}`);
+        const quantitySuffix =
+          typeof entry.data.quantity === "number" ? ` (qty ${entry.data.quantity})` : "";
+        lines.push(`${childLast ? "`-- " : "|-- "}[item] ${entry.data.name}${quantitySuffix}`);
       }
     });
   });
@@ -1234,6 +1256,10 @@ function buildTreeHtml(nodes) {
       const itemSelected = selectedItemId === item.id ? " selected" : "";
       const safeItemId = escapeAttr(item.id);
       const safeItemName = escapeHtml(item.name);
+      const quantityTag =
+        typeof item.quantity === "number"
+          ? `<span class="item-tag">qty ${escapeHtml(String(item.quantity))}</span>`
+          : "";
       const thumbUrl = item.thumbnail_url || item.image_url;
       const imageHtml =
         item.image_url && thumbUrl
@@ -1244,6 +1270,7 @@ function buildTreeHtml(nodes) {
           <span class="item-label${itemSelected}" data-item-id="${safeItemId}">
             ${imageHtml}
             <span class="item-tag">item</span>
+            ${quantityTag}
             <span>${safeItemName}</span>
           </span>
         </li>
@@ -1350,6 +1377,10 @@ function selectItem(itemId) {
 
   editItemNameInput.value = item.name || "";
   editItemDescriptionInput.value = item.description || "";
+  if (editItemQuantityInput) {
+    editItemQuantityInput.value =
+      typeof item.quantity === "number" ? String(item.quantity) : "";
+  }
   editItemKeywordsInput.value = (item.keywords || []).join(", ");
   editItemImageUrlInput.value = item.image_url || "";
 
@@ -1443,6 +1474,11 @@ function renderResults(results, total, limit, offset, mode = "lexical") {
             <div>
               <div class="result-title">${escapeHtml(item.name)}</div>
               <div class="result-path">${escapeHtml(item.location_path)}</div>
+              ${
+                typeof item.quantity === "number"
+                  ? `<div class="result-path">Quantity: ${escapeHtml(String(item.quantity))}</div>`
+                  : ""
+              }
               ${
                 formatScore(item.score)
                   ? `<div class="result-scores">score ${formatScore(item.score)} | lexical ${formatScore(item.lexical_score) || "0.000"} | semantic ${formatScore(item.semantic_score) || "0.000"}</div>`
@@ -1771,9 +1807,16 @@ createLocationForm.addEventListener("submit", async (event) => {
 createItemForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
+  const quantity = parseOptionalQuantityInput(itemQuantityInput ? itemQuantityInput.value : "");
+  if (!quantity.ok) {
+    setStatus(quantity.message);
+    return;
+  }
+
   const payload = {
     name: itemNameInput.value.trim(),
     description: itemDescriptionInput.value.trim() || null,
+    quantity: quantity.value,
     keywords: parseKeywords(itemKeywordsInput.value),
     image_url: itemImageUrlInput.value.trim() || null,
     location_id: itemLocationSelect.value,
@@ -1846,9 +1889,18 @@ editItemForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  const quantity = parseOptionalQuantityInput(
+    editItemQuantityInput ? editItemQuantityInput.value : ""
+  );
+  if (!quantity.ok) {
+    setStatus(quantity.message);
+    return;
+  }
+
   const payload = {
     name: editItemNameInput.value.trim(),
     description: editItemDescriptionInput.value.trim() || null,
+    quantity: quantity.value,
     keywords: parseKeywords(editItemKeywordsInput.value),
     image_url: editItemImageUrlInput.value.trim() || null,
     location_id: editItemLocationSelect.value,

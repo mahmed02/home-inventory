@@ -235,6 +235,7 @@
         <form id="createItemForm" class="stack">
           <input id="itemName" type="text" placeholder="Name" required />
           <input id="itemDescription" type="text" placeholder="Description (optional)" />
+          <input id="itemQuantity" type="number" min="0" step="1" placeholder="Quantity (optional)" />
           <input id="itemKeywords" type="text" placeholder="Keywords comma-separated" />
           <input id="itemImageUrl" type="url" placeholder="Image URL (optional)" />
           <div class="upload-row">
@@ -311,6 +312,7 @@
         <form id="editItemForm" class="stack" hidden>
           <input id="editItemName" type="text" placeholder="Name" required />
           <input id="editItemDescription" type="text" placeholder="Description" />
+          <input id="editItemQuantity" type="number" min="0" step="1" placeholder="Quantity (optional)" />
           <input id="editItemKeywords" type="text" placeholder="Keywords comma-separated" />
           <input id="editItemImageUrl" type="url" placeholder="Image URL" />
           <div class="upload-row">

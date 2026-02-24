@@ -21,7 +21,10 @@ This guide configures a Siri Shortcut that asks a natural-language inventory que
   "location_path": "House > Garage > Shelf 2",
   "notes": "Green, under tarp",
   "match_count": 1,
-  "requires_confirmation": false
+  "requires_confirmation": false,
+  "quantity": null,
+  "previous_quantity": null,
+  "quantity_operation": null
 }
 ```
 
@@ -61,7 +64,7 @@ If this fails, fix server/network first.
 9. Optional fallback step:
    - If `answer` is empty, read key `notes` and speak that instead.
 
-This gives natural responses for find/list/count prompts while handling guarded requests safely.
+This gives natural responses for find/list/count prompts and quantity updates while handling guarded requests safely.
 
 ## 3) Add Siri Voice Phrase
 
@@ -74,6 +77,10 @@ Natural prompts also work, for example:
 - `Where is my compressor?`
 - `What is in the garage?`
 - `How many drill bits do I have?`
+- `Get count of drill bits`
+- `Add 3 drill bits`
+- `Remove 1 drill bit`
+- `Set quantity of drill bits to 10`
 - `Move the drill to attic` (returns guarded response requiring confirmation)
 
 ## 4) Share With Family
@@ -107,5 +114,6 @@ Natural prompts also work, for example:
 
 - Response is raw JSON (not envelope-wrapped) for Shortcut compatibility.
 - Core fields for Siri flow: `answer`, `intent`, `confidence`, `fallback`, `requires_confirmation`.
+- Quantity actions include: `quantity`, `previous_quantity`, and `quantity_operation`.
 - Auth can be disabled on trusted home LAN only (`REQUIRE_AUTH=false` and `REQUIRE_USER_ACCOUNTS=false`).
 - For public/HTTPS exposure, keep auth enabled and use rate limiting.

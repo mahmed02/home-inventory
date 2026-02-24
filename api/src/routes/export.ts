@@ -81,6 +81,11 @@ function validateItemRow(row: ItemRow): string | null {
   if (!Array.isArray(row.keywords)) {
     return "items[].keywords must be an array of strings";
   }
+  if (typeof row.quantity !== "undefined" && row.quantity !== null) {
+    if (!Number.isInteger(row.quantity) || row.quantity < 0) {
+      return "items[].quantity must be a non-negative integer or null";
+    }
+  }
   if (!validTimestamp(row.created_at) || !validTimestamp(row.updated_at)) {
     return "items[] timestamps must be valid ISO datetime strings";
   }
@@ -149,15 +154,16 @@ async function insertImportData(
     await client.query(
       `
       INSERT INTO items(
-        id, name, description, keywords, location_id, image_url, created_at, updated_at, owner_user_id, household_id
+        id, name, description, keywords, quantity, location_id, image_url, created_at, updated_at, owner_user_id, household_id
       )
-      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8,$9,$10,$11)
       `,
       [
         row.id,
         row.name,
         row.description,
         row.keywords,
+        row.quantity ?? null,
         row.location_id,
         row.image_url,
         row.created_at,
@@ -203,15 +209,16 @@ async function mergeImportData(
     await client.query(
       `
       INSERT INTO items(
-        id, name, description, keywords, location_id, image_url, created_at, updated_at, owner_user_id, household_id
+        id, name, description, keywords, quantity, location_id, image_url, created_at, updated_at, owner_user_id, household_id
       )
-      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4::text[],$5,$6,$7,$8,$9,$10,$11)
       `,
       [
         row.id,
         row.name,
         row.description,
         row.keywords,
+        row.quantity ?? null,
         row.location_id,
         row.image_url,
         row.created_at,

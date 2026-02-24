@@ -12,6 +12,7 @@ type InventoryNode = LocationRow & {
     name: string;
     description: string | null;
     keywords: string[];
+    quantity: number | null;
     image_url: string | null;
     thumbnail_url: string | null;
     location_id: string;
@@ -72,6 +73,7 @@ inventoryRouter.get("/inventory/tree", async (req, res) => {
         name: item.name,
         description: item.description,
         keywords: item.keywords,
+        quantity: item.quantity ?? null,
         image_url: item.image_url,
         thumbnail_url: deriveThumbnailUrlFromImageUrl(item.image_url, env.s3Bucket, env.awsRegion),
         location_id: item.location_id,
