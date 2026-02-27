@@ -9,6 +9,20 @@ const chatHistoryEl = document.getElementById("chatHistory");
 const statusEl = document.getElementById("status");
 const metaEl = document.getElementById("meta");
 const authStateHintEl = document.getElementById("authStateHint");
+const landingViewEl = document.getElementById("landingView");
+const authViewEl = document.getElementById("authView");
+const inventoryViewEl = document.getElementById("inventoryView");
+const brandHomeBtn = document.getElementById("brandHomeBtn");
+const globalAuthBadgeEl = document.getElementById("globalAuthBadge");
+const goToAuthBtn = document.getElementById("goToAuthBtn");
+const goToInventoryBtn = document.getElementById("goToInventoryBtn");
+const logoutTopBtn = document.getElementById("logoutTopBtn");
+const startLoginBtn = document.getElementById("startLoginBtn");
+const startSignupBtn = document.getElementById("startSignupBtn");
+const startInventoryBtn = document.getElementById("startInventoryBtn");
+const authBackBtn = document.getElementById("authBackBtn");
+const authOpenInventoryBtn = document.getElementById("authOpenInventoryBtn");
+const workspaceRefreshBtn = document.getElementById("workspaceRefreshBtn");
 
 const authLoggedOutEl = document.getElementById("authLoggedOut");
 const authLoggedInEl = document.getElementById("authLoggedIn");
@@ -142,6 +156,7 @@ let latestInviteToken = "";
 let activeHouseholdId = "";
 let activeHouseholdRole = "";
 let refreshingHouseholds = false;
+let currentView = "landing";
 let pendingLocationMove = null;
 let verificationRequestSeq = 0;
 let verificationChecklistLocationId = "";
@@ -225,6 +240,48 @@ function persistAuthSession() {
   localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(authUser));
 }
 
+function setAppView(view) {
+  const nextView = view === "auth" || view === "inventory" ? view : "landing";
+  currentView = nextView;
+
+  if (landingViewEl) {
+    landingViewEl.hidden = nextView !== "landing";
+  }
+  if (authViewEl) {
+    authViewEl.hidden = nextView !== "auth";
+  }
+  if (inventoryViewEl) {
+    inventoryViewEl.hidden = nextView !== "inventory";
+  }
+
+  if (nextView !== "inventory") {
+    closeAllModals();
+  }
+}
+
+function setTopNavigationState() {
+  const isSignedIn = Boolean(authUser && authToken);
+
+  if (globalAuthBadgeEl) {
+    globalAuthBadgeEl.textContent = isSignedIn
+      ? authUser?.email || authUser?.display_name || "Signed in"
+      : "Guest";
+  }
+
+  if (goToAuthBtn) {
+    goToAuthBtn.hidden = isSignedIn;
+  }
+  if (goToInventoryBtn) {
+    goToInventoryBtn.hidden = !isSignedIn;
+  }
+  if (logoutTopBtn) {
+    logoutTopBtn.hidden = !isSignedIn;
+  }
+  if (startInventoryBtn) {
+    startInventoryBtn.hidden = !isSignedIn;
+  }
+}
+
 function applyAuthUiState() {
   if (authUser && authToken) {
     authLoggedOutEl.hidden = true;
@@ -232,6 +289,7 @@ function applyAuthUiState() {
     authUserEmailEl.textContent = authUser.email || "account";
     setAuthStateHint("Signed in");
     householdPanelEl.hidden = false;
+    setTopNavigationState();
     return;
   }
 
@@ -240,6 +298,10 @@ function applyAuthUiState() {
   authUserEmailEl.textContent = "-";
   setAuthStateHint("Not signed in");
   householdPanelEl.hidden = true;
+  if (currentView === "inventory") {
+    setAppView("landing");
+  }
+  setTopNavigationState();
 }
 
 function setAuthSession(token, user) {
@@ -1026,7 +1088,8 @@ async function fetchJson(path, options = {}) {
 
     if (response.status === 401 && authToken && !skipAuth && !path.startsWith("/auth/")) {
       clearAuthSession();
-      applyAuthUiState();
+      clearInventoryWorkspace();
+      setStatus("Session expired. Sign in again.");
     }
 
     throw new Error(message);
@@ -1589,6 +1652,25 @@ async function refreshAll() {
   await Promise.all([loadLocationTreeForForms(), refreshInventoryTree()]);
 }
 
+function clearInventoryWorkspace() {
+  flatLocations = [];
+  inventoryRoots = [];
+  locationMap = new Map();
+  itemMap = new Map();
+  locationPathMap = new Map();
+  itemPathMap = new Map();
+  verificationStatusesByLocation.clear();
+  chatHistory = [];
+  renderChatHistory();
+  hideEditors();
+  resultsEl.innerHTML = "";
+  metaEl.textContent = "";
+  treeMetaEl.textContent = "";
+  treeViewEl.innerHTML = "";
+  treeTextEl.textContent = "";
+  householdRoleHintEl.textContent = "";
+}
+
 function renderMoveImpactPreview(impact) {
   const affectedLocations = Number(impact.affected_locations || 0);
   const affectedItems = Number(impact.affected_items || 0);
@@ -1637,6 +1719,126 @@ async function previewLocationMove(locationId, payload) {
   pendingLocationMove = { locationId, payload };
   renderMoveImpactPreview(impact);
   openModal(moveImpactModal);
+}
+
+function focusInput(inputEl) {
+  if (!inputEl || typeof inputEl.focus !== "function") {
+    return;
+  }
+  window.setTimeout(() => inputEl.focus(), 20);
+}
+
+function goToLanding() {
+  setAppView("landing");
+}
+
+function goToAuth(preferred = "login") {
+  setAppView("auth");
+  if (preferred === "signup") {
+    focusInput(registerEmailInput);
+    return;
+  }
+  focusInput(loginEmailInput);
+}
+
+function goToInventory() {
+  if (!authToken || !authUser) {
+    setStatus("Sign in to open the inventory workspace.");
+    setAppView("auth");
+    focusInput(loginEmailInput);
+    return;
+  }
+  setAppView("inventory");
+}
+
+async function handleLogout() {
+  try {
+    await fetchJson("/auth/logout", { method: "POST" });
+  } catch {
+    // Ignore logout failure and clear local session anyway.
+  } finally {
+    clearAuthSession();
+    clearInventoryWorkspace();
+    setAppView("landing");
+    setStatus("Signed out.");
+  }
+}
+
+if (brandHomeBtn) {
+  brandHomeBtn.addEventListener("click", () => {
+    if (authToken && authUser) {
+      goToInventory();
+      return;
+    }
+    goToLanding();
+  });
+}
+
+if (goToAuthBtn) {
+  goToAuthBtn.addEventListener("click", () => {
+    goToAuth("login");
+  });
+}
+
+if (goToInventoryBtn) {
+  goToInventoryBtn.addEventListener("click", () => {
+    goToInventory();
+  });
+}
+
+if (logoutTopBtn) {
+  logoutTopBtn.addEventListener("click", () => {
+    void handleLogout();
+  });
+}
+
+if (startLoginBtn) {
+  startLoginBtn.addEventListener("click", () => {
+    goToAuth("login");
+  });
+}
+
+if (startSignupBtn) {
+  startSignupBtn.addEventListener("click", () => {
+    goToAuth("signup");
+  });
+}
+
+if (startInventoryBtn) {
+  startInventoryBtn.addEventListener("click", () => {
+    goToInventory();
+  });
+}
+
+if (authBackBtn) {
+  authBackBtn.addEventListener("click", () => {
+    if (authToken && authUser) {
+      goToInventory();
+      return;
+    }
+    goToLanding();
+  });
+}
+
+if (authOpenInventoryBtn) {
+  authOpenInventoryBtn.addEventListener("click", () => {
+    goToInventory();
+  });
+}
+
+if (workspaceRefreshBtn) {
+  workspaceRefreshBtn.addEventListener("click", async () => {
+    workspaceRefreshBtn.disabled = true;
+    setStatus("Refreshing workspace...");
+    try {
+      await refreshAll();
+      setStatus("Workspace refreshed.");
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      workspaceRefreshBtn.disabled = false;
+    }
+  });
 }
 
 resultsEl.addEventListener("click", async (event) => {
@@ -2304,6 +2506,7 @@ loginForm.addEventListener("submit", async (event) => {
     await refreshHouseholds();
     hideEditors();
     await refreshAll();
+    setAppView("inventory");
     setStatus("Signed in.");
   } catch (error) {
     setStatus(error.message);
@@ -2336,6 +2539,7 @@ registerForm.addEventListener("submit", async (event) => {
     await refreshHouseholds();
     hideEditors();
     await refreshAll();
+    setAppView("inventory");
     setStatus("Account created and signed in.");
   } catch (error) {
     setStatus(error.message);
@@ -2392,21 +2596,7 @@ resetPasswordForm.addEventListener("submit", async (event) => {
 });
 
 logoutBtn.addEventListener("click", async () => {
-  try {
-    await fetchJson("/auth/logout", { method: "POST" });
-  } catch {
-    // Ignore logout failure and clear local session anyway.
-  } finally {
-    clearAuthSession();
-    hideEditors();
-    resultsEl.innerHTML = "";
-    metaEl.textContent = "";
-    treeMetaEl.textContent = "";
-    treeViewEl.innerHTML = "";
-    treeTextEl.textContent = "";
-    householdRoleHintEl.textContent = "";
-    setStatus("Signed out.");
-  }
+  await handleLogout();
 });
 
 searchBtn.addEventListener("click", () => {
@@ -2460,16 +2650,28 @@ window.addEventListener("load", async () => {
     restoreSearchMode();
     restoreAuthSessionFromStorage();
     await hydrateSessionUser();
-    await refreshHouseholds();
-    hideEditors();
-    await refreshAll();
-    const appliedLocationSelection = applyLocationSelectionFromUrl();
-    updateActionState();
-    if (!appliedLocationSelection) {
-      setStatus("Ready.");
+
+    if (authToken && authUser) {
+      await refreshHouseholds();
+      hideEditors();
+      await refreshAll();
+      const appliedLocationSelection = applyLocationSelectionFromUrl();
+      setAppView("inventory");
+      updateActionState();
+      if (!appliedLocationSelection) {
+        setStatus("Ready.");
+      }
+      return;
     }
+
+    clearInventoryWorkspace();
+    setAppView("landing");
+    setStatus("Sign in to access your inventory.");
   } catch (error) {
     if (String(error.message || "").toLowerCase().includes("authentication")) {
+      clearAuthSession();
+      clearInventoryWorkspace();
+      setAppView("landing");
       setStatus("Sign in to load inventory.");
     } else {
       setStatus(`Startup error: ${error.message}`);

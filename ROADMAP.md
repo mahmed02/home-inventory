@@ -1,6 +1,6 @@
 # Home Inventory System — Execution Roadmap
 
-Last updated: **2026-02-24**
+Last updated: **2026-02-27**
 
 This roadmap tracks:
 1. Completed capabilities
@@ -165,6 +165,12 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - [x] Scan-to-view experience
 - [x] Verification mode for expected vs actual inventory
 
+### Phase 10.5 — Web UX Refresh
+- [x] Split web experience into dedicated landing, auth, and inventory views
+- [x] Refreshed responsive visual system for clearer account and workspace navigation
+- [ ] Add first-household onboarding checklist and empty-state guidance
+- [ ] Add keyboard shortcuts + accessibility pass for core inventory actions
+
 ### Phase 11 — Mobile App + Storage Modes
 - [x] Define mobile stack (`React Native`) and baseline app architecture
 - [ ] Local-only mode (single-user): on-device DB + export/import
@@ -178,16 +184,16 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 ## 4) Next Tasks (Recommended Order)
 
 ### Queued Now
-1. `11-02` Shared API client + mobile auth integration
-2. `11-03` Local-only mode data layer
-3. `11-04` Cloud sync offline queue + reconciliation
+1. `10.5-03` First-household onboarding + empty-state guidance
+2. `10.5-04` Accessibility and keyboard-navigation pass
+3. `11-02` Shared API client + mobile auth integration
 
 ### Next Batch (immediately actionable)
-1. `11-02` Shared API client + mobile auth integration
-2. `11-03` Local-only mode data layer
-3. `11-04` Cloud sync offline queue + reconciliation
-4. `11-05` Mode toggle + security baseline
-5. Mobile sync conflict regression harness + telemetry
+1. `10.5-03` First-household onboarding + empty-state guidance
+2. `10.5-04` Accessibility and keyboard-navigation pass
+3. `11-02` Shared API client + mobile auth integration
+4. `11-03` Local-only mode data layer
+5. `11-04` Cloud sync offline queue + reconciliation
 
 ### Follow-up Batch
 1. `11-03` Local-only mode data layer

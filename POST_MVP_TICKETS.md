@@ -17,9 +17,9 @@ Ticket status values:
 
 ## Active Queue (Current)
 
-1. `11-02` Shared API Client + Auth Integration (`todo`) — depends on `11-01`
-2. `11-03` Local-Only Mode Data Layer (`todo`) — depends on `11-01`
-3. `11-04` Cloud Sync Offline Queue + Reconciliation (`todo`) — depends on `11-02`
+1. `10.5-03` Frontend Onboarding + Empty States (`todo`) — depends on `10.5-02`
+2. `10.5-04` Frontend Accessibility + Keyboard Navigation (`todo`) — depends on `10.5-02`
+3. `11-02` Shared API Client + Auth Integration (`todo`) — depends on `11-01`
 
 ---
 
@@ -374,6 +374,46 @@ Status: `done`
 
 ---
 
+## Phase 10.5 — Frontend Experience Refresh
+
+## 10.5-01) Web IA Split: Landing + Auth + Inventory Views
+Status: `done`
+- Scope:
+  - Split single-page layout into dedicated landing, account access, and workspace views.
+  - Keep all existing IDs/routes so no API regression is introduced.
+- Acceptance:
+  - Unauthenticated users land on marketing/onboarding view.
+  - Authenticated users default into workspace view.
+
+## 10.5-02) Visual Cleanup + Responsive Pass
+Status: `done`
+- Depends on: `10.5-01`
+- Scope:
+  - Refresh typography, spacing, and panel hierarchy for cleaner readability.
+  - Ensure layouts remain usable on desktop and mobile breakpoints.
+- Acceptance:
+  - Login/account flow and inventory workspace are visually coherent and responsive.
+
+## 10.5-03) Onboarding + Empty-State Guidance
+Status: `todo`
+- Depends on: `10.5-02`
+- Scope:
+  - Add first-use checklist for household creation/invite/search/create-item path.
+  - Add actionable empty states in results/tree/history/chat areas.
+- Acceptance:
+  - New users can complete initial setup without external runbook guidance.
+
+## 10.5-04) Accessibility + Keyboard Navigation
+Status: `todo`
+- Depends on: `10.5-02`
+- Scope:
+  - Add keyboard focus order, visible focus states, and modal trap/escape validation.
+  - Add semantic labels/aria for critical controls and auth forms.
+- Acceptance:
+  - Core flows are operable without mouse and pass baseline a11y checks.
+
+---
+
 ## Phase 11 — Mobile App + Storage Modes
 
 ## 11-01) Mobile Architecture ADR + Bootstrap
@@ -422,8 +462,8 @@ Status: `todo`
 
 ## Suggested Next Batch
 
-1. `11-01` Mobile Architecture ADR + Bootstrap
-2. `11-02` Shared API Client + Auth Integration
-3. `11-03` Local-Only Mode Data Layer
-4. `11-04` Cloud Sync Offline Queue + Reconciliation
-5. `11-05` Mode Toggle + Security Baseline
+1. `10.5-03` Frontend Onboarding + Empty States
+2. `10.5-04` Frontend Accessibility + Keyboard Navigation
+3. `11-02` Shared API Client + Auth Integration
+4. `11-03` Local-Only Mode Data Layer
+5. `11-04` Cloud Sync Offline Queue + Reconciliation
