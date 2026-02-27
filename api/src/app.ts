@@ -37,11 +37,11 @@ app.get("/auth", (_req, res) => {
 });
 
 app.get("/inventory", (_req, res) => {
-  res.sendFile(path.join(publicDir, "index.html"));
+  res.sendFile(path.join(publicDir, "inventory.html"));
 });
 
 app.get("/manage-household", (_req, res) => {
-  res.sendFile(path.join(publicDir, "index.html"));
+  res.sendFile(path.join(publicDir, "manage-household.html"));
 });
 
 app.use(requireUserSession);
