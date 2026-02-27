@@ -17,6 +17,7 @@ dotenv.config({ path: testEnvPath });
 dotenv.config({ path: defaultEnvPath });
 process.env.REQUIRE_AUTH = "false";
 process.env.REQUIRE_USER_ACCOUNTS = "false";
+process.env.EMAIL_PROVIDER = "disabled";
 process.env.AWS_REGION = "";
 process.env.S3_BUCKET = "";
 process.env.SEARCH_PROVIDER = process.env.SEARCH_PROVIDER ?? "memory";
@@ -105,6 +106,7 @@ async function resetDatabase(): Promise<void> {
   await pool.query("DROP TABLE IF EXISTS household_invitations CASCADE");
   await pool.query("DROP TABLE IF EXISTS household_members CASCADE");
   await pool.query("DROP TABLE IF EXISTS households CASCADE");
+  await pool.query("DROP TABLE IF EXISTS email_verification_tokens CASCADE");
   await pool.query("DROP TABLE IF EXISTS password_reset_tokens CASCADE");
   await pool.query("DROP TABLE IF EXISTS user_sessions CASCADE");
   await pool.query("DROP TABLE IF EXISTS users CASCADE");
@@ -124,6 +126,7 @@ async function clearData(): Promise<void> {
   await pool.query("DELETE FROM household_invitations");
   await pool.query("DELETE FROM household_members");
   await pool.query("DELETE FROM households");
+  await pool.query("DELETE FROM email_verification_tokens");
   await pool.query("DELETE FROM password_reset_tokens");
   await pool.query("DELETE FROM user_sessions");
   await pool.query("DELETE FROM users");
@@ -2302,6 +2305,102 @@ test("Password reset flow issues one-time token and rotates credentials", async 
     body: { email: "reset-user@example.com", password: "NewPassword123!" },
   });
   assert.equal(loginNew.status, 200);
+});
+
+test("Email verification flow issues one-time token and marks account verified", async () => {
+  const registered = await request("/auth/register", {
+    method: "POST",
+    body: {
+      email: "verify-user@example.com",
+      password: "VerifyPass123!",
+    },
+  });
+  assert.equal(registered.status, 201);
+  const registerJson = registered.json as {
+    token: string;
+    user: { email_verified: boolean };
+  };
+  assert.equal(registerJson.user.email_verified, false);
+
+  const unauthIssue = await request("/auth/verify-email", {
+    method: "POST",
+  });
+  assert.equal(unauthIssue.status, 401);
+
+  const issue = await request("/auth/verify-email", {
+    method: "POST",
+    token: registerJson.token,
+  });
+  assert.equal(issue.status, 200);
+  const issueJson = issue.json as {
+    accepted: boolean;
+    already_verified: boolean;
+    verification_token: string | null;
+    expires_at: string | null;
+  };
+  assert.equal(issueJson.accepted, true);
+  assert.equal(issueJson.already_verified, false);
+  assert.ok(
+    typeof issueJson.verification_token === "string" && issueJson.verification_token.length > 20
+  );
+  assert.ok(typeof issueJson.expires_at === "string");
+
+  const resend = await request("/auth/verify-email/resend", {
+    method: "POST",
+    token: registerJson.token,
+  });
+  assert.equal(resend.status, 200);
+  const resendJson = resend.json as {
+    accepted: boolean;
+    already_verified: boolean;
+    verification_token: string | null;
+    expires_at: string | null;
+  };
+  assert.equal(resendJson.accepted, true);
+  assert.equal(resendJson.already_verified, false);
+  const resendToken = resendJson.verification_token;
+  assert.ok(typeof resendToken === "string" && resendToken.length > 20);
+  assert.ok(typeof resendJson.expires_at === "string");
+  assert.notEqual(resendJson.verification_token, issueJson.verification_token);
+
+  const badConfirm = await request("/auth/verify-email/confirm", {
+    method: "POST",
+    body: { token: "invalid-token" },
+  });
+  assert.equal(badConfirm.status, 400);
+
+  const confirm = await request("/auth/verify-email/confirm", {
+    method: "POST",
+    body: { token: resendToken },
+  });
+  assert.equal(confirm.status, 200);
+  assert.deepEqual(confirm.json, { verified: true });
+
+  const reusedConfirm = await request("/auth/verify-email/confirm", {
+    method: "POST",
+    body: { token: resendToken },
+  });
+  assert.equal(reusedConfirm.status, 400);
+
+  const meAfter = await request("/auth/me", { token: registerJson.token });
+  assert.equal(meAfter.status, 200);
+  const meAfterJson = meAfter.json as {
+    user: { email: string; email_verified: boolean };
+  };
+  assert.equal(meAfterJson.user.email, "verify-user@example.com");
+  assert.equal(meAfterJson.user.email_verified, true);
+
+  const alreadyVerifiedIssue = await request("/auth/verify-email", {
+    method: "POST",
+    token: registerJson.token,
+  });
+  assert.equal(alreadyVerifiedIssue.status, 200);
+  assert.deepEqual(alreadyVerifiedIssue.json, {
+    accepted: true,
+    already_verified: true,
+    verification_token: null,
+    expires_at: null,
+  });
 });
 
 test("Owner-scoped access isolates inventory across users", async () => {

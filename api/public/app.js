@@ -1014,6 +1014,37 @@ function applyLocationSelectionFromUrl() {
   return true;
 }
 
+function clearModeAndTokenFromUrlQuery() {
+  const currentUrl = new URL(window.location.href);
+  const params = currentUrl.searchParams;
+  const hadMode = params.has("mode");
+  const hadToken = params.has("token");
+  if (!hadMode && !hadToken) {
+    return;
+  }
+  params.delete("mode");
+  params.delete("token");
+  const nextQuery = params.toString();
+  const nextPath = `${currentUrl.pathname}${nextQuery ? `?${nextQuery}` : ""}${currentUrl.hash}`;
+  window.history.replaceState({}, "", nextPath);
+}
+
+function applyInviteAcceptanceFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = (params.get("mode") || "").trim().toLowerCase();
+  const token = (params.get("token") || "").trim();
+  if (mode !== "accept-invite" || !token) {
+    return false;
+  }
+
+  if (acceptInviteTokenInput) {
+    acceptInviteTokenInput.value = token;
+  }
+  clearModeAndTokenFromUrlQuery();
+  setStatus("Invitation token loaded. Click Accept Invite.");
+  return true;
+}
+
 function openModal(modalEl) {
   if (!modalEl) {
     return;
@@ -2307,9 +2338,18 @@ inviteMemberForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ email, role }),
     });
     inviteMemberForm.reset();
-    setInviteToken(payload.invitation_token || "");
+    const inviteToken = payload.invitation_token || "";
+    setInviteToken(inviteToken);
     await refreshHouseholdMembersAndInvites();
-    setStatus(`Invitation created for ${email}.`);
+    if (inviteToken) {
+      setStatus(`Invitation created for ${email}. Share the token securely.`);
+    } else if (payload.delivery === "sent") {
+      setStatus(`Invitation email sent to ${email}.`);
+    } else if (payload.delivery === "failed") {
+      setStatus(`Invitation created for ${email}, but email delivery failed.`);
+    } else {
+      setStatus(`Invitation created for ${email}.`);
+    }
   } catch (error) {
     setStatus(error.message);
   } finally {
@@ -2563,7 +2603,9 @@ forgotPasswordForm.addEventListener("submit", async (event) => {
     });
     if (payload.reset_token) {
       resetTokenInput.value = payload.reset_token;
-      setStatus(`Reset token generated. Expires at: ${payload.expires_at}`);
+      setStatus(`Reset token generated (email disabled mode). Expires at: ${payload.expires_at}`);
+    } else if (payload.expires_at) {
+      setStatus("If that account exists, a reset email was sent.");
     } else {
       setStatus("If that account exists, a reset token was issued.");
     }
@@ -2656,17 +2698,25 @@ window.addEventListener("load", async () => {
       await refreshHouseholds();
       hideEditors();
       await refreshAll();
+      const appliedInviteAcceptance = applyInviteAcceptanceFromUrl();
       const appliedLocationSelection = applyLocationSelectionFromUrl();
       setAppView("inventory");
       updateActionState();
-      if (!appliedLocationSelection) {
+      if (!appliedLocationSelection && !appliedInviteAcceptance) {
         setStatus("Ready.");
       }
       return;
     }
 
     clearInventoryWorkspace();
-    window.location.href = "/auth";
+    const query = new URLSearchParams(window.location.search);
+    const mode = (query.get("mode") || "").trim().toLowerCase();
+    const token = (query.get("token") || "").trim();
+    if (mode === "accept-invite" && token) {
+      window.location.href = `/auth?mode=accept-invite&token=${encodeURIComponent(token)}`;
+    } else {
+      window.location.href = "/auth";
+    }
   } catch (error) {
     if (String(error.message || "").toLowerCase().includes("authentication")) {
       clearAuthSession();

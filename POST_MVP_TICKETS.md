@@ -14,12 +14,27 @@ Ticket status values:
 2. Complete schema and API tickets before UI tickets in each phase.
 3. Keep one migration-focused ticket per PR where possible.
 4. Start Phase 6.6 (shared households) only after open 6.5 tickets are complete.
+5. Complete Phase 6.7 auth hardening before production GA/public launch.
 
 ## Active Queue (Current)
 
 1. `10.5-03` Frontend Onboarding + Empty States (`todo`) — depends on `10.5-02`
 2. `10.5-04` Frontend Accessibility + Keyboard Navigation (`todo`) — depends on `10.5-02`
 3. `11-02` Shared API Client + Auth Integration (`todo`) — depends on `11-01`
+
+## Security Queue (Auth Hardening)
+
+1. `6.7-01` Email Verification Schema + Verification API (`done`) — depends on `6.5-03`
+2. `6.7-02` Transactional Email Delivery Integration (`done`) — depends on `6.7-01`
+3. `6.7-03` Remove Raw Token Responses (reset/invite) (`todo`) — depends on `6.7-02`
+4. `6.7-04` Auth Endpoint Rate Limits + Abuse Controls (`todo`) — depends on `6.5-03`
+5. `6.7-05` Session Transport Hardening (HttpOnly cookie mode) (`todo`) — depends on `6.5-03`, `6.7-04`
+
+## Paused Queue (Do Not Start Yet)
+
+1. `8.6-01` Deterministic Tool Route Baseline (`blocked`) — paused by product decision until current UX + mobile priorities are done
+2. `8.6-02` Lightweight LLM Query Normalizer + Response Composer (`blocked`) — depends on `8.6-01`
+3. `8.6-03` NLI Evaluation Harness + Guardrails (`blocked`) — depends on `8.6-01`, `8.6-02`
 
 ---
 
@@ -185,6 +200,62 @@ Status: `done`
 
 ---
 
+## Phase 6.7 — Auth Hardening + Verification
+
+## 6.7-01) Email Verification Schema + Verification API
+Status: `done`
+- Depends on: `6.5-03`
+- Scope:
+  - Add verification token persistence (`email_verification_tokens`) with expiry and one-time use.
+  - Add `email_verified_at` (or equivalent) to users.
+  - Add endpoints for verification issue/resend/confirm flow.
+- Acceptance:
+  - Newly registered users can verify email through one-time token flow.
+  - Expired/used tokens are rejected safely.
+
+## 6.7-02) Transactional Email Delivery Integration
+Status: `done`
+- Depends on: `6.7-01`
+- Scope:
+  - Add provider-backed email sender abstraction for verification, password reset, and household invite delivery.
+  - Add template-safe links for staging/prod domains.
+- Acceptance:
+  - Verification/reset/invite flows send delivery links through configured email provider.
+  - Email dispatch failures are logged without exposing token secrets in API responses.
+
+## 6.7-03) Remove Raw Token Responses (Reset + Invite)
+Status: `todo`
+- Depends on: `6.7-02`
+- Scope:
+  - Remove direct `reset_token` response payload from forgot-password endpoint.
+  - Remove direct `invitation_token` response payload from invitation create endpoint.
+  - Update UI/tests to consume email-link flow instead of raw token display.
+- Acceptance:
+  - Auth/invite APIs no longer return plaintext token secrets.
+  - Existing flows remain usable through email-delivered links.
+
+## 6.7-04) Auth Endpoint Rate Limits + Abuse Controls
+Status: `todo`
+- Depends on: `6.5-03`
+- Scope:
+  - Add dedicated rate limiting for register/login/forgot/reset endpoints.
+  - Add abuse controls for repeated invalid login attempts and reset spam.
+- Acceptance:
+  - Auth endpoints return deterministic throttling responses under abuse traffic.
+  - Contract coverage includes success path, throttled path, and reset abuse path.
+
+## 6.7-05) Session Transport Hardening (HttpOnly Cookie Mode)
+Status: `todo`
+- Depends on: `6.5-03`, `6.7-04`
+- Scope:
+  - Add optional HttpOnly secure cookie session transport mode (feature flag), with same-origin defaults.
+  - Keep Bearer mode available for backward compatibility during rollout.
+- Acceptance:
+  - Web app can operate with HttpOnly cookie auth in staging.
+  - Logout/reset revokes sessions correctly in both cookie and bearer modes.
+
+---
+
 ## Phase 7 — Semantic Search
 
 ## 7-01) Embeddings Store + Provider Integration
@@ -317,6 +388,43 @@ Status: `done`
 - Acceptance:
   - Smoke script verifies quantity read/add/remove and Siri confirmation + idempotent replay flow.
   - Runbook documents auth modes and quantity smoke usage.
+
+---
+
+## Phase 8.6 — Optional LLM Query Normalizer (Paused)
+
+## 8.6-01) Deterministic Tool Route Baseline
+Status: `blocked`
+- Scope:
+  - Finalize deterministic read/write route contracts as canonical execution layer.
+  - Define normalized query contract for existence/count/location/related-item retrieval.
+- Acceptance:
+  - Tool route behavior is stable and covered by regression tests for core retrieval intents.
+- Blocker:
+  - Paused by product decision on 2026-02-27 until active UX/mobile queue is complete.
+
+## 8.6-02) Lightweight LLM Query Normalizer + Response Composer
+Status: `blocked`
+- Depends on: `8.6-01`
+- Scope:
+  - Add optional LLM normalization layer that maps paraphrased user requests to deterministic tool-route calls.
+  - Keep all writes routed through existing deterministic/confirmation/idempotency controls.
+- Acceptance:
+  - Feature-flagged rollout with deterministic fallback when LLM confidence is low or provider fails.
+  - Existing Siri/chat behavior remains available when flag is off.
+- Blocker:
+  - Paused by product decision on 2026-02-27 until active UX/mobile queue is complete.
+
+## 8.6-03) NLI Evaluation Harness + Safety Guardrails
+Status: `blocked`
+- Depends on: `8.6-01`, `8.6-02`
+- Scope:
+  - Build eval set for paraphrase coverage (existence/count/location/related-item queries).
+  - Add confidence/fallback thresholds and regression gate for unsafe or low-confidence mappings.
+- Acceptance:
+  - CI check reports accuracy/fallback metrics and blocks regressions before rollout.
+- Blocker:
+  - Paused by product decision on 2026-02-27 until active UX/mobile queue is complete.
 
 ---
 
@@ -464,6 +572,6 @@ Status: `todo`
 
 1. `10.5-03` Frontend Onboarding + Empty States
 2. `10.5-04` Frontend Accessibility + Keyboard Navigation
-3. `11-02` Shared API Client + Auth Integration
-4. `11-03` Local-Only Mode Data Layer
-5. `11-04` Cloud Sync Offline Queue + Reconciliation
+3. `6.7-03` Remove Raw Token Responses (reset/invite)
+4. `6.7-04` Auth Endpoint Rate Limits + Abuse Controls
+5. `6.7-05` Session Transport Hardening (HttpOnly cookie mode)

@@ -141,7 +141,7 @@ This roadmap tracks:
 
 ### MVP hardening status: **closed**
 - Core MVP + staging HTTPS + backups + photo uploads + multi-user household sharing are complete.
-- Current effort focus is now **Post-MVP Phases 9+**.
+- Current effort focus is now **Phase 10.5 UX, Phase 6.7 auth hardening, and Phase 11 mobile**.
 
 ---
 
@@ -149,10 +149,24 @@ This roadmap tracks:
 
 Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICKETS.md`
 
+### Phase 6.7 — Auth Hardening + Verification
+- [x] Email verification flow (schema + verification endpoints)
+- [x] Transactional email delivery integration (verification/reset/invite)
+- [ ] Remove raw token responses from forgot-password and invite APIs
+- [ ] Auth abuse controls (rate limits + invalid-attempt throttling)
+- [ ] Optional HttpOnly cookie session mode for web
+
 ### Phase 8.5 — Inventory Quantity Tracking + Siri Actions
 - [x] Quantity schema migration + API endpoints
 - [x] Siri get/set/add/remove quantity support
 - [x] Contract tests + UI support for quantity fields
+
+### Phase 8.6 — Optional LLM Query Normalizer (Paused)
+- [ ] Preserve deterministic tool routes as the source of truth for reads/writes
+- [ ] Add optional lightweight LLM intent/query normalizer in front of tool routes
+- [ ] Add accuracy + safety regression set for paraphrase handling and fallback behavior
+- [ ] Gate rollout behind feature flag with explicit kill switch
+- [ ] Revisit after current UX + mobile milestones
 
 ### Phase 9 — Movement History
 - [x] `movement_history` table
@@ -188,17 +202,27 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 2. `10.5-04` Accessibility and keyboard-navigation pass
 3. `11-02` Shared API client + mobile auth integration
 
+### Security Batch (Queued Next)
+1. `6.7-03` Remove raw token responses from reset/invite APIs
+2. `6.7-04` Auth endpoint abuse controls
+3. `6.7-05` Optional HttpOnly cookie session mode
+
 ### Next Batch (immediately actionable)
 1. `10.5-03` First-household onboarding + empty-state guidance
 2. `10.5-04` Accessibility and keyboard-navigation pass
-3. `11-02` Shared API client + mobile auth integration
-4. `11-03` Local-only mode data layer
-5. `11-04` Cloud sync offline queue + reconciliation
+3. `6.7-03` Remove raw token responses from reset/invite APIs
+4. `6.7-04` Auth endpoint abuse controls
+5. `6.7-05` Optional HttpOnly cookie session mode
 
 ### Follow-up Batch
 1. `11-03` Local-only mode data layer
 2. `11-04` Cloud sync offline queue + reconciliation
 3. `11-05` Mode toggle + security baseline
+
+### Paused (Do Not Start Yet)
+1. `8.6-01` Deterministic tool-route baseline for LLM normalization
+2. `8.6-02` Feature-flagged lightweight LLM normalizer + response composer
+3. `8.6-03` NLI accuracy/safety evaluation harness
 
 ---
 

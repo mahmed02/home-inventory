@@ -1,8 +1,10 @@
 import { Request, Response, Router } from "express";
 import { generateSessionToken, hashSessionToken } from "../auth/session";
+import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { sendInternalError, sendValidationError } from "../middleware/http";
 import { asOptionalText, asRequiredText } from "../middleware/validation";
+import { sendHouseholdInvitationEmail } from "../notifications/email";
 import { isUuid } from "../utils";
 
 const householdsRouter = Router();
@@ -10,6 +12,20 @@ const HOUSEHOLD_ROLES = new Set(["owner", "editor", "viewer"]);
 const INVITATION_TTL_HOURS = 7 * 24;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type HouseholdRole = "owner" | "editor" | "viewer";
+
+async function dispatchEmail<T>(
+  label: string,
+  sender: () => Promise<T>
+): Promise<{ sent: boolean; error_message: string | null }> {
+  try {
+    await sender();
+    return { sent: true, error_message: null };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "unknown error";
+    console.error(`${label} failed: ${errorMessage}`);
+    return { sent: false, error_message: errorMessage };
+  }
+}
 
 function requireAuthUserId(req: Request, res: Response): string | null {
   if (!req.authUserId) {
@@ -330,9 +346,41 @@ householdsRouter.post("/households/:householdId/invitations", async (req, res) =
       [householdId, email, role, tokenHash, userId, expiresAt]
     );
 
+    if (env.emailProvider === "disabled") {
+      return res.status(201).json({
+        invitation: inserted.rows[0],
+        invitation_token: invitationToken,
+      });
+    }
+
+    const metadata = await pool.query<{ household_name: string; inviter_email: string }>(
+      `
+      SELECT h.name AS household_name, u.email AS inviter_email
+      FROM households h
+      JOIN users u ON u.id = $2
+      WHERE h.id = $1
+      LIMIT 1
+      `,
+      [householdId, userId]
+    );
+    const householdName = metadata.rows[0]?.household_name ?? null;
+    const inviterEmail = metadata.rows[0]?.inviter_email ?? null;
+
+    const delivery = await dispatchEmail("Household invitation email dispatch", () =>
+      sendHouseholdInvitationEmail({
+        to: email,
+        invitationToken,
+        role,
+        expiresAtIso: expiresAt,
+        householdName,
+        invitedByEmail: inviterEmail,
+      })
+    );
+
     return res.status(201).json({
       invitation: inserted.rows[0],
-      invitation_token: invitationToken,
+      invitation_token: null,
+      delivery: delivery.sent ? "sent" : "failed",
     });
   } catch (error) {
     return sendInternalError(error, res);

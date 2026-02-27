@@ -1,6 +1,7 @@
 const AUTH_TOKEN_STORAGE_KEY = "home_inventory_auth_token";
 const AUTH_USER_STORAGE_KEY = "home_inventory_auth_user";
 const ACTIVE_HOUSEHOLD_STORAGE_KEY = "home_inventory_active_household_id";
+const PENDING_INVITE_TOKEN_STORAGE_KEY = "home_inventory_pending_invite_token";
 
 const authPageBadgeEl = document.getElementById("authPageBadge");
 const authPageStateHintEl = document.getElementById("authPageStateHint");
@@ -28,6 +29,13 @@ const resetNewPasswordInput = document.getElementById("resetNewPassword");
 
 let authToken = "";
 let authUser = null;
+
+function clearAuthLinkQuery() {
+  if (window.location.search.length === 0) {
+    return;
+  }
+  window.history.replaceState({}, "", "/auth");
+}
 
 function setStatus(message) {
   if (authPageStatusEl) {
@@ -160,6 +168,58 @@ async function handleLogout() {
   }
 }
 
+async function handleAuthLinkMode() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = (params.get("mode") || "").trim().toLowerCase();
+  const token = (params.get("token") || "").trim();
+  if (!mode || !token) {
+    return;
+  }
+
+  if (mode === "reset-password") {
+    if (resetTokenInput) {
+      resetTokenInput.value = token;
+    }
+    const recoveryDetails = document.querySelector(".auth-recovery");
+    if (recoveryDetails && "open" in recoveryDetails) {
+      recoveryDetails.open = true;
+    }
+    setStatus("Reset token loaded from link. Enter a new password to continue.");
+    clearAuthLinkQuery();
+    return;
+  }
+
+  if (mode === "verify-email") {
+    try {
+      await fetchJson("/auth/verify-email/confirm", {
+        method: "POST",
+        skipAuth: true,
+        body: JSON.stringify({ token }),
+      });
+      setStatus("Email verified. You can sign in.");
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      clearAuthLinkQuery();
+    }
+  }
+
+  if (mode === "accept-invite") {
+    sessionStorage.setItem(PENDING_INVITE_TOKEN_STORAGE_KEY, token);
+    setStatus("Invitation token loaded. Sign in to accept it.");
+    clearAuthLinkQuery();
+  }
+}
+
+function consumePendingInviteToken() {
+  const token = (sessionStorage.getItem(PENDING_INVITE_TOKEN_STORAGE_KEY) || "").trim();
+  if (!token) {
+    return null;
+  }
+  sessionStorage.removeItem(PENDING_INVITE_TOKEN_STORAGE_KEY);
+  return token;
+}
+
 if (loginForm) {
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -179,8 +239,14 @@ if (loginForm) {
       });
       setSession(payload.token, payload.user);
       loginForm.reset();
-      setStatus("Signed in. Redirecting to inventory...");
-      window.location.href = "/inventory";
+      const inviteToken = consumePendingInviteToken();
+      if (inviteToken) {
+        setStatus("Signed in. Redirecting to invitation...");
+        window.location.href = `/manage-household?mode=accept-invite&token=${encodeURIComponent(inviteToken)}`;
+      } else {
+        setStatus("Signed in. Redirecting to inventory...");
+        window.location.href = "/inventory";
+      }
     } catch (error) {
       setStatus(error.message);
     }
@@ -211,8 +277,14 @@ if (registerForm) {
       });
       setSession(payload.token, payload.user);
       registerForm.reset();
-      setStatus("Account created. Redirecting to inventory...");
-      window.location.href = "/inventory";
+      const inviteToken = consumePendingInviteToken();
+      if (inviteToken) {
+        setStatus("Account created. Redirecting to invitation...");
+        window.location.href = `/manage-household?mode=accept-invite&token=${encodeURIComponent(inviteToken)}`;
+      } else {
+        setStatus("Account created. Redirecting to inventory...");
+        window.location.href = "/inventory";
+      }
     } catch (error) {
       setStatus(error.message);
     }
@@ -240,8 +312,10 @@ if (forgotPasswordForm) {
       }
       forgotPasswordForm.reset();
       setStatus(
-        payload && payload.expires_at
-          ? `Reset token generated. Expires at: ${payload.expires_at}`
+        payload && payload.reset_token && payload.expires_at
+          ? `Reset token generated (email disabled mode). Expires at: ${payload.expires_at}`
+          : payload && payload.expires_at
+            ? "If that account exists, a reset email was sent."
           : "If that account exists, a reset token was issued."
       );
     } catch (error) {
@@ -290,6 +364,7 @@ if (authPageLogoutBtnSecondaryEl) {
 window.addEventListener("load", async () => {
   restoreSessionFromStorage();
   await hydrateSession();
+  await handleAuthLinkMode();
 
   if (!authToken || !authUser) {
     if (window.location.hash === "#signup" && registerEmailInput) {

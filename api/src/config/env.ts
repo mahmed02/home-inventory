@@ -19,6 +19,10 @@ const s3Bucket = process.env.S3_BUCKET ?? "";
 const basicAuthUser = process.env.BASIC_AUTH_USER ?? "";
 const basicAuthPass = process.env.BASIC_AUTH_PASS ?? "";
 const sessionTtlHoursRaw = Number(process.env.SESSION_TTL_HOURS ?? "720");
+const emailProviderRaw = (process.env.EMAIL_PROVIDER ?? "disabled").trim().toLowerCase();
+const emailFrom = process.env.EMAIL_FROM ?? "";
+const emailReplyTo = process.env.EMAIL_REPLY_TO ?? "";
+const emailResendApiKey = process.env.EMAIL_RESEND_API_KEY ?? "";
 const searchProviderRaw = (process.env.SEARCH_PROVIDER ?? "pinecone").trim().toLowerCase();
 const siriRequireMutationConfirmationRaw = (
   process.env.SIRI_REQUIRE_MUTATION_CONFIRMATION ?? "true"
@@ -72,12 +76,24 @@ export function resolveRequireUserAccounts(): boolean {
 }
 
 export type SearchProvider = "pinecone" | "memory";
+export type EmailProvider = "disabled" | "log" | "resend";
 
 export function resolveSearchProvider(): SearchProvider {
   if (searchProviderRaw === "pinecone" || searchProviderRaw === "memory") {
     return searchProviderRaw;
   }
   throw new Error("SEARCH_PROVIDER must be set to 'pinecone' or 'memory'.");
+}
+
+function resolveEmailProvider(): EmailProvider {
+  if (
+    emailProviderRaw === "disabled" ||
+    emailProviderRaw === "log" ||
+    emailProviderRaw === "resend"
+  ) {
+    return emailProviderRaw;
+  }
+  throw new Error("EMAIL_PROVIDER must be set to 'disabled', 'log', or 'resend'.");
 }
 
 function resolveSiriRequireMutationConfirmation(): boolean {
@@ -120,6 +136,7 @@ function resolvePositiveSeconds(
 const enableDevRoutes = resolveEnableDevRoutes();
 const requireAuth = resolveRequireAuth();
 const requireUserAccounts = resolveRequireUserAccounts();
+const emailProvider = resolveEmailProvider();
 const searchProvider = resolveSearchProvider();
 const siriRequireMutationConfirmation = resolveSiriRequireMutationConfirmation();
 const semanticCacheEnabled = resolveSemanticCacheEnabled();
@@ -161,12 +178,20 @@ if (searchProvider === "pinecone" && (!pineconeApiKey || !pineconeIndexName)) {
   );
 }
 
+if (emailProvider === "resend" && (!emailFrom || !emailResendApiKey)) {
+  throw new Error("EMAIL_FROM and EMAIL_RESEND_API_KEY are required when EMAIL_PROVIDER=resend");
+}
+
 export const env = {
   port,
   databaseUrl,
   enableDevRoutes,
   requireAuth,
   requireUserAccounts,
+  emailProvider,
+  emailFrom,
+  emailReplyTo,
+  emailResendApiKey,
   searchProvider,
   siriRequireMutationConfirmation,
   semanticCacheEnabled,

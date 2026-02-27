@@ -54,6 +54,10 @@ Default DB URL expected by `.env.example`:
 | `BASIC_AUTH_PASS` | optional | required when `REQUIRE_AUTH=true` | required when `REQUIRE_AUTH=true` | conditional |
 | `REQUIRE_USER_ACCOUNTS` | `false` | `false` or `true` | `true` (recommended) | optional |
 | `SESSION_TTL_HOURS` | `720` | `720` | `720` | optional |
+| `EMAIL_PROVIDER` | `disabled` or `log` | `resend` (recommended) | `resend` (recommended) | optional |
+| `EMAIL_FROM` | optional | required when `EMAIL_PROVIDER=resend` | required when `EMAIL_PROVIDER=resend` | conditional |
+| `EMAIL_REPLY_TO` | optional | optional | optional | optional |
+| `EMAIL_RESEND_API_KEY` | optional | required when `EMAIL_PROVIDER=resend` | required when `EMAIL_PROVIDER=resend` | conditional |
 | `CORS_ALLOW_ORIGINS` | empty (same-origin only) | comma-separated allowlist | comma-separated allowlist | optional |
 | `SEARCH_PROVIDER` | `memory` or `pinecone` | `pinecone` | `pinecone` | yes |
 | `SEMANTIC_CACHE_ENABLED` | `true` | `true` | `true` | optional |
@@ -86,6 +90,11 @@ When `REQUIRE_AUTH=true`, all endpoints except `/health` require HTTP Basic auth
 When `REQUIRE_USER_ACCOUNTS=true`, all endpoints except `/health` and `/auth/*` require a bearer session token.
 Do not set both to `true` in-app at the same time (both rely on the `Authorization` header).
 
+Email delivery modes:
+- `EMAIL_PROVIDER=disabled`: local/dev fallback, raw verification/reset/invite tokens are returned in API responses.
+- `EMAIL_PROVIDER=log`: delivery is simulated via structured server logs; raw tokens are suppressed from responses.
+- `EMAIL_PROVIDER=resend`: transactional email is sent via Resend API; raw tokens are suppressed from responses.
+
 ## AWS Deploy Checklist (MVP)
 
 1. Provision RDS PostgreSQL and create DB/user.
@@ -113,6 +122,9 @@ For the full step-by-step runbook, use:
 - `POST /auth/login`
 - `POST /auth/forgot-password`
 - `POST /auth/reset-password`
+- `POST /auth/verify-email`
+- `POST /auth/verify-email/resend`
+- `POST /auth/verify-email/confirm`
 - `POST /auth/logout`
 - `GET /auth/me`
 - `POST /locations`
@@ -261,6 +273,7 @@ Notes:
 - `0012_add_item_quantity.sql`
 - `0013_add_siri_idempotency_keys.sql`
 - `0014_add_semantic_search_cache.sql`
+- `0015_add_email_verification_tokens.sql`
 
 ## Notes
 
