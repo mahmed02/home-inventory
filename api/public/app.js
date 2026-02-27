@@ -1090,6 +1090,7 @@ async function fetchJson(path, options = {}) {
       clearAuthSession();
       clearInventoryWorkspace();
       setStatus("Session expired. Sign in again.");
+      window.location.href = "/auth";
     }
 
     throw new Error(message);
@@ -1729,23 +1730,17 @@ function focusInput(inputEl) {
 }
 
 function goToLanding() {
-  setAppView("landing");
+  window.location.href = "/";
 }
 
 function goToAuth(preferred = "login") {
-  setAppView("auth");
-  if (preferred === "signup") {
-    focusInput(registerEmailInput);
-    return;
-  }
-  focusInput(loginEmailInput);
+  window.location.href = preferred === "signup" ? "/auth#signup" : "/auth";
 }
 
 function goToInventory() {
   if (!authToken || !authUser) {
     setStatus("Sign in to open the inventory workspace.");
-    setAppView("auth");
-    focusInput(loginEmailInput);
+    window.location.href = "/auth";
     return;
   }
   setAppView("inventory");
@@ -2665,14 +2660,12 @@ window.addEventListener("load", async () => {
     }
 
     clearInventoryWorkspace();
-    setAppView("landing");
-    setStatus("Sign in to access your inventory.");
+    window.location.href = "/auth";
   } catch (error) {
     if (String(error.message || "").toLowerCase().includes("authentication")) {
       clearAuthSession();
       clearInventoryWorkspace();
-      setAppView("landing");
-      setStatus("Sign in to load inventory.");
+      window.location.href = "/auth";
     } else {
       setStatus(`Startup error: ${error.message}`);
     }

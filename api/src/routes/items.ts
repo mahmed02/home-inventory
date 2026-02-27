@@ -136,7 +136,16 @@ itemsRouter.post("/items", async (req, res) => {
       VALUES ($1, $2, $3::text[], $4, $5, $6, $7, $8)
       RETURNING *
       `,
-      [name, description, keywords, quantity, locationId, imageUrl, scope.ownerUserId, scope.householdId]
+      [
+        name,
+        description,
+        keywords,
+        quantity,
+        locationId,
+        imageUrl,
+        scope.ownerUserId,
+        scope.householdId,
+      ]
     );
 
     await upsertItemEmbedding(result.rows[0], client);
@@ -354,14 +363,13 @@ itemsRouter.get("/items/:id([0-9a-fA-F-]{36})/history", async (req, res) => {
       from_location_path: row.from_location_path,
       to_location_path: row.to_location_path,
       moved_by_user_id: row.moved_by_user_id,
-      moved_by:
-        row.moved_by_user_id
-          ? {
-              id: row.moved_by_user_id,
-              email: row.moved_by_email,
-              display_name: row.moved_by_display_name,
-            }
-          : null,
+      moved_by: row.moved_by_user_id
+        ? {
+            id: row.moved_by_user_id,
+            email: row.moved_by_email,
+            display_name: row.moved_by_display_name,
+          }
+        : null,
       source: row.source,
       created_at: row.created_at,
     }));
@@ -600,10 +608,7 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})/quantity", async (req, res) => {
   } else {
     const parsed = asRequiredPositiveInteger(req.body.amount ?? req.body.quantity);
     if (parsed === "INVALID") {
-      return sendValidationError(
-        res,
-        "amount must be a positive integer for op=add/remove"
-      );
+      return sendValidationError(res, "amount must be a positive integer for op=add/remove");
     }
     amount = parsed;
   }

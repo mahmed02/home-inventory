@@ -156,7 +156,9 @@ if (requireAuth && requireUserAccounts) {
 }
 
 if (searchProvider === "pinecone" && (!pineconeApiKey || !pineconeIndexName)) {
-  throw new Error("PINECONE_API_KEY and PINECONE_INDEX_NAME are required when SEARCH_PROVIDER=pinecone");
+  throw new Error(
+    "PINECONE_API_KEY and PINECONE_INDEX_NAME are required when SEARCH_PROVIDER=pinecone"
+  );
 }
 
 export const env = {

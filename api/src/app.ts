@@ -29,6 +29,14 @@ app.use(authRouter);
 app.use(express.static(publicDir));
 
 app.get("/", (_req, res) => {
+  res.sendFile(path.join(publicDir, "landing.html"));
+});
+
+app.get("/auth", (_req, res) => {
+  res.sendFile(path.join(publicDir, "auth.html"));
+});
+
+app.get("/inventory", (_req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));
 });
 

@@ -23,10 +23,13 @@ async function handleLookup(req: Request, res: Response) {
     return res.status(400).json({ error: "q is required" });
   }
 
-  const confirmRaw = normalizeOptionalText(req.query.confirm) ?? normalizeOptionalText(req.header("x-confirm-write"));
+  const confirmRaw =
+    normalizeOptionalText(req.query.confirm) ??
+    normalizeOptionalText(req.header("x-confirm-write"));
   const confirmed = !!confirmRaw && /^(1|true|yes|y|confirm)$/i.test(confirmRaw);
   const idempotencyKey =
-    normalizeOptionalText(req.query.idempotency_key) ?? normalizeOptionalText(req.header("x-idempotency-key"));
+    normalizeOptionalText(req.query.idempotency_key) ??
+    normalizeOptionalText(req.header("x-idempotency-key"));
 
   try {
     const scopeResult = await resolveInventoryScope(req);

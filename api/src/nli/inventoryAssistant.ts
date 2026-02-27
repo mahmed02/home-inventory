@@ -94,10 +94,7 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
   const setQuantityMatch =
     normalizedQuery.match(
       /^(?:set|update)\s+(?:the\s+)?(?:count|quantity)\s+(?:of\s+)?(.+?)\s+(?:to|=)\s*(\d+)$/i
-    ) ||
-    normalizedQuery.match(
-      /^(?:set|update)\s+(.+?)\s+(?:count|quantity)\s+(?:to|=)\s*(\d+)$/i
-    );
+    ) || normalizedQuery.match(/^(?:set|update)\s+(.+?)\s+(?:count|quantity)\s+(?:to|=)\s*(\d+)$/i);
   if (setQuantityMatch) {
     const amount = parseNonNegativeInt(setQuantityMatch[2]);
     const subject = cleanupSubject(setQuantityMatch[1]);
@@ -172,9 +169,7 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
   }
 
   const getQuantityMatch =
-    normalizedQuery.match(
-      /^(?:get|show)\s+(?:the\s+)?(?:count|quantity)\s+(?:of\s+)?(.+)$/i
-    ) ||
+    normalizedQuery.match(/^(?:get|show)\s+(?:the\s+)?(?:count|quantity)\s+(?:of\s+)?(.+)$/i) ||
     normalizedQuery.match(
       /^(?:what(?:'s| is)\s+(?:the\s+)?(?:count|quantity)\s+(?:of\s+)?)(.+)$/i
     ) ||
@@ -191,9 +186,7 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
     };
   }
 
-  const unsupportedMatch = normalizedQuery.match(
-    /^(move|delete|rename|update|edit)\s+(.+)$/i
-  );
+  const unsupportedMatch = normalizedQuery.match(/^(move|delete|rename|update|edit)\s+(.+)$/i);
   if (unsupportedMatch) {
     const subject = cleanupSubject(unsupportedMatch[2]);
     return {
@@ -350,9 +343,7 @@ async function findItemIntent(
   };
 }
 
-function hasAmbiguousTopMatch(
-  results: Array<{ name: string; score: number }>
-): boolean {
+function hasAmbiguousTopMatch(results: Array<{ name: string; score: number }>): boolean {
   if (results.length < 2) {
     return false;
   }
@@ -672,7 +663,8 @@ async function mutateItemQuantityIntent(
             intent: parsed.intent,
             confidence: roundConfidence(parsed.confidence * 0.6),
             fallback: true,
-            answer: "I couldn't secure this request safely. Please retry with a new idempotency key.",
+            answer:
+              "I couldn't secure this request safely. Please retry with a new idempotency key.",
             item: top.name,
             location_path: top.location_path,
             notes: "No write was applied.",
@@ -715,7 +707,8 @@ async function mutateItemQuantityIntent(
           intent: parsed.intent,
           confidence: roundConfidence(parsed.confidence * 0.65),
           fallback: true,
-          answer: "A matching quantity update is still processing. Retry shortly with the same key.",
+          answer:
+            "A matching quantity update is still processing. Retry shortly with the same key.",
           item: top.name,
           location_path: top.location_path,
           notes: "No additional write was applied.",
@@ -832,7 +825,11 @@ async function mutateItemQuantityIntent(
     );
 
     const actionVerb =
-      operation === "set" ? "Set" : operation === "add" ? `Added ${amount} to` : `Removed ${amount} from`;
+      operation === "set"
+        ? "Set"
+        : operation === "add"
+          ? `Added ${amount} to`
+          : `Removed ${amount} from`;
 
     return commitWithResponse({
       query: parsed.rawQuery,

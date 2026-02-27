@@ -30,9 +30,7 @@ function normalizeKeywords(value: string[] | null | undefined): string[] {
     return [];
   }
 
-  return value
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
+  return value.map((entry) => entry.trim()).filter((entry) => entry.length > 0);
 }
 
 function createPineconeClient(): Pinecone {
@@ -85,7 +83,10 @@ export function pineconeTopK(limit: number, offset: number): number {
 }
 
 export function pineconeRecordFromItem(
-  item: Pick<ItemRow, "id" | "name" | "description" | "keywords" | "location_id" | "owner_user_id" | "household_id">,
+  item: Pick<
+    ItemRow,
+    "id" | "name" | "description" | "keywords" | "location_id" | "owner_user_id" | "household_id"
+  >,
   sourceText: string
 ): Record<string, string | number | boolean | string[]> {
   const record: Record<string, string | number | boolean | string[]> = {

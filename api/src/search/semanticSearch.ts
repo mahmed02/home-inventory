@@ -444,7 +444,10 @@ function sortByRank(rows: RankedRow[]): RankedRow[] {
   });
 }
 
-async function fetchScopedItemsByIds(scope: InventoryScope, ids: string[]): Promise<ScopedSearchRow[]> {
+async function fetchScopedItemsByIds(
+  scope: InventoryScope,
+  ids: string[]
+): Promise<ScopedSearchRow[]> {
   if (ids.length === 0) {
     return [];
   }

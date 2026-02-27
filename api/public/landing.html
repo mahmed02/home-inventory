@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Home Inventory</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="site-shell">
+      <header class="topbar panel">
+        <div class="brand-block">
+          <a href="/" class="brand-btn" style="text-decoration: none">Home Inventory</a>
+          <p class="hint">Know exactly where everything is.</p>
+        </div>
+        <div class="topbar-actions">
+          <span id="landingAuthBadge" class="auth-badge">Guest</span>
+          <a id="landingSignInLink" class="button-subtle" href="/auth">Sign In</a>
+          <a id="landingOpenInventoryLink" class="button-subtle" href="/inventory" hidden>Open Inventory</a>
+        </div>
+      </header>
+
+      <section class="view landing-view">
+        <section class="panel hero-panel">
+          <p class="eyebrow">Simple, shared home organization</p>
+          <h1>Track your household inventory with one clean workspace.</h1>
+          <p class="hero-copy">
+            Search items instantly, ask where something is, and keep one source of truth for everyone in the home.
+          </p>
+          <div class="hero-actions">
+            <a class="button-subtle" href="/auth">Sign In</a>
+            <a class="button-subtle" href="/auth#signup">Create Account</a>
+            <a id="landingHeroInventoryLink" class="button-subtle" href="/inventory" hidden>Go to Inventory</a>
+          </div>
+        </section>
+
+        <section class="landing-grid">
+          <article class="panel feature-card">
+            <h2>Fast Search</h2>
+            <p>Find items by keyword, semantic match, or assistant query.</p>
+          </article>
+          <article class="panel feature-card">
+            <h2>Household Sharing</h2>
+            <p>Invite owners, editors, and viewers with role-based access.</p>
+          </article>
+          <article class="panel feature-card">
+            <h2>Accurate History</h2>
+            <p>Track where items moved and verify expected vs actual locations.</p>
+          </article>
+        </section>
+      </section>
+
+      <p id="landingStatus" class="status"></p>
+    </main>
+
+    <script src="/landing.js" defer></script>
+  </body>
+</html>

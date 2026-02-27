@@ -122,8 +122,7 @@ async function run(): Promise<void> {
     console.warn(
       JSON.stringify({
         event: "warning",
-        message:
-          `mode=missing behaves as full scan when SEARCH_PROVIDER=${env.searchProvider}; remote index coverage cannot be inferred locally.`,
+        message: `mode=missing behaves as full scan when SEARCH_PROVIDER=${env.searchProvider}; remote index coverage cannot be inferred locally.`,
       })
     );
   }
