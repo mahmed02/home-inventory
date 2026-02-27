@@ -26,7 +26,7 @@ app.use(requireBasicAuth);
 app.use(attachUserSession);
 app.use(healthRouter);
 app.use(authRouter);
-app.use(express.static(publicDir));
+app.use(express.static(publicDir, { index: false }));
 
 app.get("/", (_req, res) => {
   res.sendFile(path.join(publicDir, "landing.html"));
