@@ -815,13 +815,14 @@ async function mutateItemQuantityIntent(
       nextQuantity = baseQuantity - amount;
     }
 
+    const updateScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 3);
     await client.query(
       `
       UPDATE items
       SET quantity = $1
-      WHERE id = $2 AND ${itemScope.sql}
+      WHERE id = $2 AND ${updateScope.sql}
       `,
-      [nextQuantity, top.id, ...itemScope.params]
+      [nextQuantity, top.id, ...updateScope.params]
     );
 
     const actionVerb =

@@ -282,7 +282,7 @@ test("GET /locations/:id/qr returns stable QR reference payload", async () => {
     scan_path: string;
     scan_url: string;
     payload: string;
-    created_at: string;
+    created_at: string | Date;
     updated_at: string;
   };
 
@@ -1550,7 +1550,7 @@ test("PATCH/DELETE item flow works end-to-end", async () => {
     to_location_id: string;
     moved_by_user_id: string | null;
     source: string;
-    created_at: string;
+    created_at: string | Date;
   }>(
     `
     SELECT item_id, from_location_id, to_location_id, moved_by_user_id, source, created_at
@@ -1566,7 +1566,10 @@ test("PATCH/DELETE item flow works end-to-end", async () => {
   assert.equal(movementHistory.rows[0].to_location_id, basementId);
   assert.equal(movementHistory.rows[0].moved_by_user_id, null);
   assert.equal(movementHistory.rows[0].source, "api.items.patch");
-  assert.ok(typeof movementHistory.rows[0].created_at === "string");
+  assert.ok(
+    typeof movementHistory.rows[0].created_at === "string" ||
+      movementHistory.rows[0].created_at instanceof Date
+  );
 
   const deleted = await request(`/items/${itemId}`, { method: "DELETE" });
   assert.equal(deleted.status, 204);

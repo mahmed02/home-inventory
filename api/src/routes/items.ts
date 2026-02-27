@@ -664,14 +664,15 @@ itemsRouter.patch("/items/:id([0-9a-fA-F-]{36})/quantity", async (req, res) => {
       nextQuantity = baseQuantity - delta;
     }
 
+    const updateScope = inventoryScopeSql(scope, "household_id", "owner_user_id", 3);
     const updated = await client.query<{ id: string; name: string; quantity: number | null }>(
       `
       UPDATE items
       SET quantity = $1
-      WHERE id = $2 AND ${itemScope.sql}
+      WHERE id = $2 AND ${updateScope.sql}
       RETURNING id, name, quantity
       `,
-      [nextQuantity, id, ...itemScope.params]
+      [nextQuantity, id, ...updateScope.params]
     );
 
     if (updated.rowCount === 0) {
