@@ -1743,6 +1743,12 @@ function goToInventory() {
     window.location.href = "/auth";
     return;
   }
+
+  if (window.location.pathname !== "/inventory") {
+    window.location.href = "/inventory";
+    return;
+  }
+
   setAppView("inventory");
 }
 

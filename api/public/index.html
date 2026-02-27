@@ -10,6 +10,12 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
+    <script>
+      (() => {
+        const route = window.location.pathname === "/manage-household" ? "household" : "inventory";
+        document.documentElement.setAttribute("data-app-route", route);
+      })();
+    </script>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -128,12 +134,16 @@
       </section>
 
       <section id="inventoryView" class="view inventory-view" hidden>
-        <section class="panel workspace-panel">
+        <section id="workspacePanel" class="panel workspace-panel">
           <div>
             <h2>Inventory Workspace</h2>
             <p class="hint">Manage inventory, sharing, and assistant lookup from one place.</p>
           </div>
-          <button id="workspaceRefreshBtn" type="button" class="button-subtle">Refresh Workspace</button>
+          <div class="actions-row">
+            <a id="workspaceManageHouseholdLink" class="button-subtle" href="/manage-household">Manage Household</a>
+            <a id="workspaceBackInventoryLink" class="button-subtle" href="/inventory">Back to Inventory</a>
+            <button id="workspaceRefreshBtn" type="button" class="button-subtle">Refresh Workspace</button>
+          </div>
         </section>
 
         <section id="householdPanel" class="panel" hidden>
@@ -201,7 +211,7 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section id="searchPanel" class="panel">
           <h2>Search</h2>
           <div class="search-row">
             <input id="query" type="text" placeholder="air compressor" />
@@ -215,7 +225,7 @@
           <p class="hint">Switch between exact keyword matching, semantic similarity, or blended ranking.</p>
         </section>
 
-        <section class="panel">
+        <section id="assistantPanel" class="panel">
           <h2>Ask Inventory Assistant</h2>
           <div class="search-row">
             <input id="chatQuery" type="text" placeholder="Where is my drill?" />
@@ -225,7 +235,7 @@
           <ul id="chatHistory" class="chat-history"></ul>
         </section>
 
-        <section class="panel">
+        <section id="resultsPanel" class="panel">
           <div class="panel-head">
             <h2>Results</h2>
             <span id="meta"></span>
@@ -233,7 +243,7 @@
           <ul id="results" class="results"></ul>
         </section>
 
-        <section class="panel">
+        <section id="inventoryTreePanel" class="panel">
           <div class="panel-head">
             <h2>Inventory Tree</h2>
             <div class="actions-row">

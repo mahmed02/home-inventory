@@ -32,6 +32,39 @@ body.modal-open {
   overflow: hidden;
 }
 
+#workspaceBackInventoryLink {
+  display: none;
+}
+
+html[data-app-route="inventory"] #landingView,
+html[data-app-route="inventory"] #authView,
+html[data-app-route="inventory"] #householdPanel {
+  display: none !important;
+}
+
+html[data-app-route="inventory"] #workspaceManageHouseholdLink {
+  display: inline-flex !important;
+}
+
+html[data-app-route="inventory"] #workspaceBackInventoryLink {
+  display: none !important;
+}
+
+html[data-app-route="household"] #landingView,
+html[data-app-route="household"] #authView,
+html[data-app-route="household"] #searchPanel,
+html[data-app-route="household"] #assistantPanel,
+html[data-app-route="household"] #resultsPanel,
+html[data-app-route="household"] #inventoryTreePanel,
+html[data-app-route="household"] #verificationPanel,
+html[data-app-route="household"] #workspaceManageHouseholdLink {
+  display: none !important;
+}
+
+html[data-app-route="household"] #workspaceBackInventoryLink {
+  display: inline-flex !important;
+}
+
 h1,
 h2,
 h3,

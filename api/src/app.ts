@@ -40,6 +40,10 @@ app.get("/inventory", (_req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));
 });
 
+app.get("/manage-household", (_req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
 app.use(requireUserSession);
 app.use(householdsRouter);
 app.use(locationsRouter);
