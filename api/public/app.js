@@ -230,13 +230,17 @@ async function copyInviteTokenToClipboard() {
 }
 
 function persistAuthSession() {
-  if (!authToken || !authUser) {
+  if (!authUser) {
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     localStorage.removeItem(AUTH_USER_STORAGE_KEY);
     return;
   }
 
-  localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, authToken);
+  if (authToken) {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, authToken);
+  } else {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  }
   localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(authUser));
 }
 
@@ -260,7 +264,7 @@ function setAppView(view) {
 }
 
 function setTopNavigationState() {
-  const isSignedIn = Boolean(authUser && authToken);
+  const isSignedIn = Boolean(authUser);
 
   if (globalAuthBadgeEl) {
     globalAuthBadgeEl.textContent = isSignedIn
@@ -283,7 +287,7 @@ function setTopNavigationState() {
 }
 
 function applyAuthUiState() {
-  if (authUser && authToken) {
+  if (authUser) {
     authLoggedOutEl.hidden = true;
     authLoggedInEl.hidden = false;
     authUserEmailEl.textContent = authUser.email || "account";
@@ -307,7 +311,7 @@ function applyAuthUiState() {
 function setAuthSession(token, user) {
   authToken = token || "";
   authUser = user || null;
-  if (authToken && authUser) {
+  if (authUser) {
     restoreActiveHousehold();
   } else {
     activeHouseholdId = "";
@@ -342,13 +346,8 @@ function restoreAuthSessionFromStorage() {
 }
 
 async function hydrateSessionUser() {
-  if (!authToken) {
-    applyAuthUiState();
-    return;
-  }
-
   try {
-    const me = await fetchJson("/auth/me");
+    const me = await fetchJson("/auth/me", { skipAuth: !authToken });
     setAuthSession(authToken, me.user || null);
   } catch {
     clearAuthSession();
@@ -356,7 +355,7 @@ async function hydrateSessionUser() {
 }
 
 function isViewerRoleActive() {
-  return Boolean(authToken && activeHouseholdId && activeHouseholdRole === "viewer");
+  return Boolean(authUser && activeHouseholdId && activeHouseholdRole === "viewer");
 }
 
 function activeHousehold() {
@@ -372,7 +371,7 @@ function persistActiveHousehold() {
 }
 
 function restoreActiveHousehold() {
-  if (!authToken) {
+  if (!authUser) {
     activeHouseholdId = "";
     return;
   }
@@ -391,7 +390,7 @@ function renderManagementListEmpty(targetEl, message) {
 }
 
 function renderHouseholdPanel() {
-  if (!authToken || !authUser) {
+  if (!authUser) {
     householdRoleHintEl.textContent = "Sign in to manage household sharing.";
     renderManagementListEmpty(householdMembersEl, "No household selected.");
     renderManagementListEmpty(householdInvitationsEl, "No household selected.");
@@ -544,7 +543,7 @@ async function refreshHouseholdMembersAndInvites() {
 }
 
 async function refreshHouseholds(preferredHouseholdId = "") {
-  if (!authToken) {
+  if (!authUser) {
     households = [];
     householdMembers = [];
     householdInvitations = [];
@@ -1093,13 +1092,14 @@ async function fetchJson(path, options = {}) {
 
   if (authToken && !skipAuth) {
     headers.Authorization = `Bearer ${authToken}`;
-    if (activeHouseholdId && !headers["x-household-id"]) {
-      headers["x-household-id"] = activeHouseholdId;
-    }
+  }
+  if (!skipAuth && activeHouseholdId && !headers["x-household-id"]) {
+    headers["x-household-id"] = activeHouseholdId;
   }
 
   const response = await fetch(path, {
     headers,
+    credentials: "same-origin",
     ...requestOptions,
   });
 
@@ -1117,7 +1117,7 @@ async function fetchJson(path, options = {}) {
           ? data.error
           : `Request failed (${response.status})`;
 
-    if (response.status === 401 && authToken && !skipAuth && !path.startsWith("/auth/")) {
+    if (response.status === 401 && authUser && !skipAuth && !path.startsWith("/auth/")) {
       clearAuthSession();
       clearInventoryWorkspace();
       setStatus("Session expired. Sign in again.");
@@ -1769,7 +1769,7 @@ function goToAuth(preferred = "login") {
 }
 
 function goToInventory() {
-  if (!authToken || !authUser) {
+  if (!authUser) {
     setStatus("Sign in to open the inventory workspace.");
     window.location.href = "/auth";
     return;
@@ -1798,7 +1798,7 @@ async function handleLogout() {
 
 if (brandHomeBtn) {
   brandHomeBtn.addEventListener("click", () => {
-    if (authToken && authUser) {
+    if (authUser) {
       goToInventory();
       return;
     }
@@ -1844,7 +1844,7 @@ if (startInventoryBtn) {
 
 if (authBackBtn) {
   authBackBtn.addEventListener("click", () => {
-    if (authToken && authUser) {
+    if (authUser) {
       goToInventory();
       return;
     }
@@ -2338,15 +2338,15 @@ inviteMemberForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ email, role }),
     });
     inviteMemberForm.reset();
-    const inviteToken = payload.invitation_token || "";
-    setInviteToken(inviteToken);
     await refreshHouseholdMembersAndInvites();
-    if (inviteToken) {
-      setStatus(`Invitation created for ${email}. Share the token securely.`);
-    } else if (payload.delivery === "sent") {
+    if (payload.delivery === "sent") {
       setStatus(`Invitation email sent to ${email}.`);
     } else if (payload.delivery === "failed") {
       setStatus(`Invitation created for ${email}, but email delivery failed.`);
+    } else if (payload.delivery === "disabled") {
+      setStatus(
+        `Invitation created for ${email}. Email delivery is disabled, so no invite link was sent.`
+      );
     } else {
       setStatus(`Invitation created for ${email}.`);
     }
@@ -2542,7 +2542,7 @@ loginForm.addEventListener("submit", async (event) => {
       skipAuth: true,
       body: JSON.stringify({ email, password }),
     });
-    setAuthSession(payload.token, payload.user);
+    setAuthSession(typeof payload.token === "string" ? payload.token : "", payload.user);
     loginForm.reset();
     await refreshHouseholds();
     hideEditors();
@@ -2575,7 +2575,7 @@ registerForm.addEventListener("submit", async (event) => {
         display_name: displayName || null,
       }),
     });
-    setAuthSession(payload.token, payload.user);
+    setAuthSession(typeof payload.token === "string" ? payload.token : "", payload.user);
     registerForm.reset();
     await refreshHouseholds();
     hideEditors();
@@ -2596,19 +2596,12 @@ forgotPasswordForm.addEventListener("submit", async (event) => {
   }
 
   try {
-    const payload = await fetchJson("/auth/forgot-password", {
+    await fetchJson("/auth/forgot-password", {
       method: "POST",
       skipAuth: true,
       body: JSON.stringify({ email }),
     });
-    if (payload.reset_token) {
-      resetTokenInput.value = payload.reset_token;
-      setStatus(`Reset token generated (email disabled mode). Expires at: ${payload.expires_at}`);
-    } else if (payload.expires_at) {
-      setStatus("If that account exists, a reset email was sent.");
-    } else {
-      setStatus("If that account exists, a reset token was issued.");
-    }
+    setStatus("If that account exists, a reset email was sent.");
     forgotPasswordForm.reset();
   } catch (error) {
     setStatus(error.message);
@@ -2694,7 +2687,7 @@ window.addEventListener("load", async () => {
     restoreAuthSessionFromStorage();
     await hydrateSessionUser();
 
-    if (authToken && authUser) {
+    if (authUser) {
       await refreshHouseholds();
       hideEditors();
       await refreshAll();

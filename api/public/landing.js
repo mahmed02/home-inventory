@@ -63,11 +63,16 @@ function applySignedOutUi() {
 }
 
 async function fetchMe(token) {
+  const headers = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const response = await fetch("/auth/me", {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers,
+    credentials: "same-origin",
   });
 
   const text = await response.text();
@@ -88,12 +93,8 @@ async function fetchMe(token) {
 }
 
 window.addEventListener("load", async () => {
-  const { token } = readStoredSession();
-  if (!token) {
-    applySignedOutUi();
-    setStatus("Ready.");
-    return;
-  }
+  const { token, user } = readStoredSession();
+  const hadStoredSession = Boolean(token || user);
 
   try {
     const payload = await fetchMe(token);
@@ -106,6 +107,6 @@ window.addEventListener("load", async () => {
   } catch {
     clearStoredSession();
     applySignedOutUi();
-    setStatus("Session expired. Sign in again.");
+    setStatus(hadStoredSession ? "Session expired. Sign in again." : "Ready.");
   }
 });

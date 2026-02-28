@@ -1,8 +1,9 @@
-import { Router } from "express";
+import { Request, Response, Router } from "express";
 import { PoolClient } from "pg";
 import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { getDbErrorCode, sendInternalError, sendValidationError } from "../middleware/http";
+import { createInMemoryRateLimit } from "../middleware/rateLimit";
 import { asOptionalText, asRequiredText } from "../middleware/validation";
 import { ensureOwnerHouseholdForUser } from "../auth/households";
 import { hashPassword, verifyPassword } from "../auth/password";
@@ -15,6 +16,17 @@ const MAX_PASSWORD_LENGTH = 200;
 const PASSWORD_RESET_TTL_MINUTES = 30;
 const EMAIL_VERIFICATION_TTL_HOURS = 24;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const AUTH_RATE_WINDOW_MS = env.authRateLimitWindowSeconds * 1000;
+const LOGIN_FAILURE_WINDOW_MS = env.authLoginFailureWindowSeconds * 1000;
+const LOGIN_FAILURE_LOCKOUT_MS = env.authLoginFailureLockoutSeconds * 1000;
+
+type LoginFailureEntry = {
+  count: number;
+  windowResetAtMs: number;
+  blockedUntilMs: number;
+};
+
+const loginFailureStore = new Map<string, LoginFailureEntry>();
 
 function normalizeEmail(value: string | null): string | null {
   if (!value) {
@@ -45,6 +57,175 @@ function passwordResetExpiryIso(): string {
 function emailVerificationExpiryIso(): string {
   return new Date(Date.now() + EMAIL_VERIFICATION_TTL_HOURS * 60 * 60 * 1000).toISOString();
 }
+
+function resolveClientIp(req: Request): string {
+  if (typeof req.ip === "string" && req.ip.trim().length > 0) {
+    return req.ip.trim();
+  }
+  return "unknown";
+}
+
+function resolveAuthIdentityKey(req: Request, explicitEmail?: string | null): string {
+  const emailFromBody = normalizeEmail(
+    asOptionalText((req.body as { email?: unknown } | null)?.email)
+  );
+  const emailSegment = explicitEmail ?? emailFromBody ?? "unknown";
+  return `${resolveClientIp(req)}:${emailSegment}`;
+}
+
+function retryAfterSeconds(remainingMs: number): number {
+  return Math.max(1, Math.ceil(remainingMs / 1000));
+}
+
+function loginLockoutSecondsRemaining(key: string): number {
+  const now = Date.now();
+  const entry = loginFailureStore.get(key);
+  if (!entry) {
+    return 0;
+  }
+  if (entry.blockedUntilMs <= now) {
+    entry.blockedUntilMs = 0;
+    if (entry.windowResetAtMs <= now) {
+      loginFailureStore.delete(key);
+    }
+    return 0;
+  }
+  return retryAfterSeconds(entry.blockedUntilMs - now);
+}
+
+function clearLoginFailures(key: string): void {
+  loginFailureStore.delete(key);
+}
+
+function recordFailedLoginAttempt(key: string): number {
+  const now = Date.now();
+  let entry = loginFailureStore.get(key);
+  if (!entry || entry.windowResetAtMs <= now) {
+    entry = {
+      count: 0,
+      windowResetAtMs: now + LOGIN_FAILURE_WINDOW_MS,
+      blockedUntilMs: 0,
+    };
+  }
+
+  entry.count += 1;
+  if (entry.count >= env.authLoginFailureMaxAttempts) {
+    entry.blockedUntilMs = now + LOGIN_FAILURE_LOCKOUT_MS;
+    entry.count = 0;
+    entry.windowResetAtMs = now + LOGIN_FAILURE_WINDOW_MS;
+  }
+
+  loginFailureStore.set(key, entry);
+  if (entry.blockedUntilMs > now) {
+    return retryAfterSeconds(entry.blockedUntilMs - now);
+  }
+  return 0;
+}
+
+function cookieSameSiteValue(): "Strict" | "Lax" | "None" {
+  if (env.sessionCookieSameSite === "strict") {
+    return "Strict";
+  }
+  if (env.sessionCookieSameSite === "none") {
+    return "None";
+  }
+  return "Lax";
+}
+
+function shouldSetSessionCookie(): boolean {
+  return env.sessionTransport === "cookie" || env.sessionTransport === "hybrid";
+}
+
+function shouldReturnBearerToken(): boolean {
+  return env.sessionTransport === "bearer" || env.sessionTransport === "hybrid";
+}
+
+function buildSessionCookie(token: string, expiresAtIso: string): string {
+  const expiresAt = new Date(expiresAtIso);
+  const maxAgeSeconds = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+  const segments = [
+    `${env.sessionCookieName}=${encodeURIComponent(token)}`,
+    "Path=/",
+    "HttpOnly",
+    `SameSite=${cookieSameSiteValue()}`,
+    `Max-Age=${maxAgeSeconds}`,
+    `Expires=${expiresAt.toUTCString()}`,
+  ];
+  if (env.sessionCookieSecure) {
+    segments.push("Secure");
+  }
+  if (env.sessionCookieDomain) {
+    segments.push(`Domain=${env.sessionCookieDomain}`);
+  }
+  return segments.join("; ");
+}
+
+function buildExpiredSessionCookie(): string {
+  const segments = [
+    `${env.sessionCookieName}=`,
+    "Path=/",
+    "HttpOnly",
+    `SameSite=${cookieSameSiteValue()}`,
+    "Max-Age=0",
+    "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+  ];
+  if (env.sessionCookieSecure) {
+    segments.push("Secure");
+  }
+  if (env.sessionCookieDomain) {
+    segments.push(`Domain=${env.sessionCookieDomain}`);
+  }
+  return segments.join("; ");
+}
+
+function applySessionResponse(res: Response, session: { token: string; expires_at: string }) {
+  if (shouldSetSessionCookie()) {
+    res.append("Set-Cookie", buildSessionCookie(session.token, session.expires_at));
+  }
+  return {
+    token: shouldReturnBearerToken() ? session.token : null,
+    expires_at: session.expires_at,
+    session_transport: env.sessionTransport,
+  };
+}
+
+function clearSessionCookie(res: Response): void {
+  if (!shouldSetSessionCookie()) {
+    return;
+  }
+  res.append("Set-Cookie", buildExpiredSessionCookie());
+}
+
+const registerRateLimit = createInMemoryRateLimit({
+  keyPrefix: "auth:register",
+  max: env.authRegisterRateLimitMax,
+  windowMs: AUTH_RATE_WINDOW_MS,
+  message: "Too many registration attempts. Try again later.",
+  keyResolver: (req) => resolveAuthIdentityKey(req),
+});
+
+const loginRateLimit = createInMemoryRateLimit({
+  keyPrefix: "auth:login",
+  max: env.authLoginRateLimitMax,
+  windowMs: AUTH_RATE_WINDOW_MS,
+  message: "Too many login attempts. Try again later.",
+  keyResolver: (req) => resolveAuthIdentityKey(req),
+});
+
+const forgotPasswordRateLimit = createInMemoryRateLimit({
+  keyPrefix: "auth:forgot-password",
+  max: env.authForgotPasswordRateLimitMax,
+  windowMs: AUTH_RATE_WINDOW_MS,
+  message: "Too many password reset requests. Try again later.",
+  keyResolver: (req) => resolveAuthIdentityKey(req),
+});
+
+const resetPasswordRateLimit = createInMemoryRateLimit({
+  keyPrefix: "auth:reset-password",
+  max: env.authResetPasswordRateLimitMax,
+  windowMs: AUTH_RATE_WINDOW_MS,
+  message: "Too many reset attempts. Try again later.",
+});
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -130,7 +311,7 @@ async function issueEmailVerificationToken(
   };
 }
 
-authRouter.post("/auth/register", async (req, res) => {
+authRouter.post("/auth/register", registerRateLimit, async (req, res) => {
   const email = normalizeEmail(asRequiredText(req.body.email));
   const password = validatePassword(asRequiredText(req.body.password));
   const displayName = asOptionalText(req.body.display_name);
@@ -161,6 +342,7 @@ authRouter.post("/auth/register", async (req, res) => {
     const user = inserted.rows[0];
     await ensureOwnerHouseholdForUser(user.id, user.email, user.display_name, client);
     const session = await issueSession(user.id, client);
+    const sessionResponse = applySessionResponse(res, session);
     await client.query("COMMIT");
 
     return res.status(201).json({
@@ -170,8 +352,9 @@ authRouter.post("/auth/register", async (req, res) => {
         display_name: user.display_name,
         email_verified: isVerified(user.email_verified_at),
       },
-      token: session.token,
-      expires_at: session.expires_at,
+      token: sessionResponse.token,
+      expires_at: sessionResponse.expires_at,
+      session_transport: sessionResponse.session_transport,
     });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -184,12 +367,19 @@ authRouter.post("/auth/register", async (req, res) => {
   }
 });
 
-authRouter.post("/auth/login", async (req, res) => {
+authRouter.post("/auth/login", loginRateLimit, async (req, res) => {
   const email = normalizeEmail(asRequiredText(req.body.email));
   const password = asRequiredText(req.body.password);
 
   if (!email || !password) {
     return sendValidationError(res, "email and password are required");
+  }
+
+  const loginKey = resolveAuthIdentityKey(req, email);
+  const blockedSeconds = loginLockoutSecondsRemaining(loginKey);
+  if (blockedSeconds > 0) {
+    res.setHeader("Retry-After", String(blockedSeconds));
+    return res.status(429).json({ error: "Too many invalid login attempts. Try again later." });
   }
 
   try {
@@ -208,15 +398,27 @@ authRouter.post("/auth/login", async (req, res) => {
     );
 
     if (userResult.rowCount === 0) {
+      const lockoutAfterSeconds = recordFailedLoginAttempt(loginKey);
+      if (lockoutAfterSeconds > 0) {
+        res.setHeader("Retry-After", String(lockoutAfterSeconds));
+        return res.status(429).json({ error: "Too many invalid login attempts. Try again later." });
+      }
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
     const user = userResult.rows[0];
     if (!verifyPassword(password, user.password_hash)) {
+      const lockoutAfterSeconds = recordFailedLoginAttempt(loginKey);
+      if (lockoutAfterSeconds > 0) {
+        res.setHeader("Retry-After", String(lockoutAfterSeconds));
+        return res.status(429).json({ error: "Too many invalid login attempts. Try again later." });
+      }
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
+    clearLoginFailures(loginKey);
     const session = await issueSession(user.id);
+    const sessionResponse = applySessionResponse(res, session);
 
     return res.status(200).json({
       user: {
@@ -225,15 +427,16 @@ authRouter.post("/auth/login", async (req, res) => {
         display_name: user.display_name,
         email_verified: isVerified(user.email_verified_at),
       },
-      token: session.token,
-      expires_at: session.expires_at,
+      token: sessionResponse.token,
+      expires_at: sessionResponse.expires_at,
+      session_transport: sessionResponse.session_transport,
     });
   } catch (error) {
     return sendInternalError(error, res);
   }
 });
 
-authRouter.post("/auth/forgot-password", async (req, res) => {
+authRouter.post("/auth/forgot-password", forgotPasswordRateLimit, async (req, res) => {
   const email = normalizeEmail(asRequiredText(req.body.email));
   if (!email) {
     return sendValidationError(res, "valid email is required");
@@ -251,11 +454,7 @@ authRouter.post("/auth/forgot-password", async (req, res) => {
     );
 
     if (userResult.rowCount === 0) {
-      return res.status(200).json({
-        accepted: true,
-        reset_token: null,
-        expires_at: null,
-      });
+      return res.status(200).json({ accepted: true });
     }
 
     const userId = userResult.rows[0].id;
@@ -272,15 +471,10 @@ authRouter.post("/auth/forgot-password", async (req, res) => {
     );
 
     if (env.emailProvider === "disabled") {
-      // Dev/local fallback while email delivery is disabled.
-      return res.status(200).json({
-        accepted: true,
-        reset_token: resetToken,
-        expires_at: expiresAt,
-      });
+      return res.status(200).json({ accepted: true });
     }
 
-    const delivery = await dispatchEmail("Password reset email dispatch", () =>
+    await dispatchEmail("Password reset email dispatch", () =>
       sendPasswordResetEmail({
         to: email,
         resetToken,
@@ -288,18 +482,13 @@ authRouter.post("/auth/forgot-password", async (req, res) => {
       })
     );
 
-    return res.status(200).json({
-      accepted: true,
-      reset_token: null,
-      expires_at: expiresAt,
-      delivery: delivery.sent ? "sent" : "failed",
-    });
+    return res.status(200).json({ accepted: true });
   } catch (error) {
     return sendInternalError(error, res);
   }
 });
 
-authRouter.post("/auth/reset-password", async (req, res) => {
+authRouter.post("/auth/reset-password", resetPasswordRateLimit, async (req, res) => {
   const token = asRequiredText(req.body.token);
   const newPassword = validatePassword(asRequiredText(req.body.new_password));
 
@@ -368,6 +557,7 @@ authRouter.post("/auth/reset-password", async (req, res) => {
     );
 
     await client.query("COMMIT");
+    clearSessionCookie(res);
     return res.status(200).json({ reset: true });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -420,8 +610,9 @@ authRouter.post("/auth/verify-email", async (req, res) => {
       return res.status(200).json({
         accepted: true,
         already_verified: false,
-        verification_token: issued.verification_token,
+        verification_token: null,
         expires_at: issued.expires_at,
+        delivery: "disabled",
       });
     }
 
@@ -491,8 +682,9 @@ authRouter.post("/auth/verify-email/resend", async (req, res) => {
       return res.status(200).json({
         accepted: true,
         already_verified: false,
-        verification_token: issued.verification_token,
+        verification_token: null,
         expires_at: issued.expires_at,
+        delivery: "disabled",
       });
     }
 
@@ -595,7 +787,8 @@ authRouter.post("/auth/logout", async (req, res) => {
       [req.authSessionId, req.authUserId]
     );
 
-    return res.status(200).json({ logged_out: true });
+    clearSessionCookie(res);
+    return res.status(200).json({ logged_out: true, session_transport: env.sessionTransport });
   } catch (error) {
     return sendInternalError(error, res);
   }
@@ -629,6 +822,7 @@ authRouter.get("/auth/me", async (req, res) => {
         display_name: user.display_name,
         email_verified: isVerified(user.email_verified_at),
       },
+      session_transport: env.sessionTransport,
     });
   } catch (error) {
     return sendInternalError(error, res);

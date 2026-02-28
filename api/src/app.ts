@@ -18,6 +18,8 @@ import uploadsRouter from "./routes/uploads";
 const app = express();
 const publicDir = path.resolve(__dirname, "../public");
 
+// Deployed behind Nginx/Cloudflare so req.ip/req.secure should honor forwarded headers.
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
 app.use(responseEnvelope);
 app.use(securityHeaders);

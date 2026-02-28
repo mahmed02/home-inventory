@@ -26,9 +26,9 @@ Ticket status values:
 
 1. `6.7-01` Email Verification Schema + Verification API (`done`) — depends on `6.5-03`
 2. `6.7-02` Transactional Email Delivery Integration (`done`) — depends on `6.7-01`
-3. `6.7-03` Remove Raw Token Responses (reset/invite) (`todo`) — depends on `6.7-02`
-4. `6.7-04` Auth Endpoint Rate Limits + Abuse Controls (`todo`) — depends on `6.5-03`
-5. `6.7-05` Session Transport Hardening (HttpOnly cookie mode) (`todo`) — depends on `6.5-03`, `6.7-04`
+3. `6.7-03` Remove Raw Token Responses (reset/invite) (`done`) — depends on `6.7-02`
+4. `6.7-04` Auth Endpoint Rate Limits + Abuse Controls (`done`) — depends on `6.5-03`
+5. `6.7-05` Session Transport Hardening (HttpOnly cookie mode) (`done`) — depends on `6.5-03`, `6.7-04`
 
 ## Paused Queue (Do Not Start Yet)
 
@@ -224,7 +224,7 @@ Status: `done`
   - Email dispatch failures are logged without exposing token secrets in API responses.
 
 ## 6.7-03) Remove Raw Token Responses (Reset + Invite)
-Status: `todo`
+Status: `done`
 - Depends on: `6.7-02`
 - Scope:
   - Remove direct `reset_token` response payload from forgot-password endpoint.
@@ -235,7 +235,7 @@ Status: `todo`
   - Existing flows remain usable through email-delivered links.
 
 ## 6.7-04) Auth Endpoint Rate Limits + Abuse Controls
-Status: `todo`
+Status: `done`
 - Depends on: `6.5-03`
 - Scope:
   - Add dedicated rate limiting for register/login/forgot/reset endpoints.
@@ -245,7 +245,7 @@ Status: `todo`
   - Contract coverage includes success path, throttled path, and reset abuse path.
 
 ## 6.7-05) Session Transport Hardening (HttpOnly Cookie Mode)
-Status: `todo`
+Status: `done`
 - Depends on: `6.5-03`, `6.7-04`
 - Scope:
   - Add optional HttpOnly secure cookie session transport mode (feature flag), with same-origin defaults.
@@ -572,6 +572,6 @@ Status: `todo`
 
 1. `10.5-03` Frontend Onboarding + Empty States
 2. `10.5-04` Frontend Accessibility + Keyboard Navigation
-3. `6.7-03` Remove Raw Token Responses (reset/invite)
-4. `6.7-04` Auth Endpoint Rate Limits + Abuse Controls
-5. `6.7-05` Session Transport Hardening (HttpOnly cookie mode)
+3. `11-02` Shared API Client + Auth Integration
+4. `11-03` Local-Only Mode Data Layer
+5. `11-04` Cloud Sync Offline Queue + Reconciliation

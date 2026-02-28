@@ -349,7 +349,7 @@ householdsRouter.post("/households/:householdId/invitations", async (req, res) =
     if (env.emailProvider === "disabled") {
       return res.status(201).json({
         invitation: inserted.rows[0],
-        invitation_token: invitationToken,
+        delivery: "disabled",
       });
     }
 
@@ -379,7 +379,6 @@ householdsRouter.post("/households/:householdId/invitations", async (req, res) =
 
     return res.status(201).json({
       invitation: inserted.rows[0],
-      invitation_token: null,
       delivery: delivery.sent ? "sent" : "failed",
     });
   } catch (error) {

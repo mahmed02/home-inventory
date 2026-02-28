@@ -50,16 +50,20 @@ function clearStoredSession() {
 }
 
 function persistSession() {
-  if (!authToken || !authUser) {
+  if (!authUser) {
     clearStoredSession();
     return;
   }
-  localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, authToken);
+  if (authToken) {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, authToken);
+  } else {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  }
   localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(authUser));
 }
 
 function applyUiState() {
-  const signedIn = Boolean(authToken && authUser);
+  const signedIn = Boolean(authUser);
 
   if (authPageBadgeEl) {
     authPageBadgeEl.textContent = signedIn ? authUser.email || "Signed in" : "Guest";
@@ -118,6 +122,7 @@ async function fetchJson(path, options = {}) {
 
   const response = await fetch(path, {
     headers,
+    credentials: "same-origin",
     ...requestOptions,
   });
 
@@ -144,14 +149,9 @@ async function fetchJson(path, options = {}) {
 }
 
 async function hydrateSession() {
-  if (!authToken) {
-    applyUiState();
-    return;
-  }
-
   try {
-    const payload = await fetchJson("/auth/me");
-    setSession(authToken, payload.user || null);
+    const payload = await fetchJson("/auth/me", { skipAuth: !authToken });
+    setSession(authToken, payload && payload.user ? payload.user : null);
   } catch {
     setSession("", null);
   }
@@ -237,7 +237,7 @@ if (loginForm) {
         skipAuth: true,
         body: JSON.stringify({ email, password }),
       });
-      setSession(payload.token, payload.user);
+      setSession(payload && typeof payload.token === "string" ? payload.token : "", payload.user);
       loginForm.reset();
       const inviteToken = consumePendingInviteToken();
       if (inviteToken) {
@@ -275,7 +275,7 @@ if (registerForm) {
           display_name: displayName || null,
         }),
       });
-      setSession(payload.token, payload.user);
+      setSession(payload && typeof payload.token === "string" ? payload.token : "", payload.user);
       registerForm.reset();
       const inviteToken = consumePendingInviteToken();
       if (inviteToken) {
@@ -307,17 +307,9 @@ if (forgotPasswordForm) {
         skipAuth: true,
         body: JSON.stringify({ email }),
       });
-      if (payload && payload.reset_token && resetTokenInput) {
-        resetTokenInput.value = payload.reset_token;
-      }
+      void payload;
       forgotPasswordForm.reset();
-      setStatus(
-        payload && payload.reset_token && payload.expires_at
-          ? `Reset token generated (email disabled mode). Expires at: ${payload.expires_at}`
-          : payload && payload.expires_at
-            ? "If that account exists, a reset email was sent."
-          : "If that account exists, a reset token was issued."
-      );
+      setStatus("If that account exists, a reset email was sent.");
     } catch (error) {
       setStatus(error.message);
     }
@@ -366,7 +358,7 @@ window.addEventListener("load", async () => {
   await hydrateSession();
   await handleAuthLinkMode();
 
-  if (!authToken || !authUser) {
+  if (!authUser) {
     if (window.location.hash === "#signup" && registerEmailInput) {
       registerEmailInput.focus();
     } else if (loginEmailInput) {

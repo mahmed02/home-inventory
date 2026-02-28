@@ -141,7 +141,7 @@ This roadmap tracks:
 
 ### MVP hardening status: **closed**
 - Core MVP + staging HTTPS + backups + photo uploads + multi-user household sharing are complete.
-- Current effort focus is now **Phase 10.5 UX, Phase 6.7 auth hardening, and Phase 11 mobile**.
+- Current effort focus is now **Phase 10.5 UX and Phase 11 mobile**.
 
 ---
 
@@ -152,9 +152,9 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 ### Phase 6.7 — Auth Hardening + Verification
 - [x] Email verification flow (schema + verification endpoints)
 - [x] Transactional email delivery integration (verification/reset/invite)
-- [ ] Remove raw token responses from forgot-password and invite APIs
-- [ ] Auth abuse controls (rate limits + invalid-attempt throttling)
-- [ ] Optional HttpOnly cookie session mode for web
+- [x] Remove raw token responses from forgot-password and invite APIs
+- [x] Auth abuse controls (rate limits + invalid-attempt throttling)
+- [x] Optional HttpOnly cookie session mode for web
 
 ### Phase 8.5 — Inventory Quantity Tracking + Siri Actions
 - [x] Quantity schema migration + API endpoints
@@ -202,7 +202,7 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 2. `10.5-04` Accessibility and keyboard-navigation pass
 3. `11-02` Shared API client + mobile auth integration
 
-### Security Batch (Queued Next)
+### Security Batch (Completed)
 1. `6.7-03` Remove raw token responses from reset/invite APIs
 2. `6.7-04` Auth endpoint abuse controls
 3. `6.7-05` Optional HttpOnly cookie session mode
@@ -210,9 +210,9 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 ### Next Batch (immediately actionable)
 1. `10.5-03` First-household onboarding + empty-state guidance
 2. `10.5-04` Accessibility and keyboard-navigation pass
-3. `6.7-03` Remove raw token responses from reset/invite APIs
-4. `6.7-04` Auth endpoint abuse controls
-5. `6.7-05` Optional HttpOnly cookie session mode
+3. `11-02` Shared API client + mobile auth integration
+4. `11-03` Local-only mode data layer
+5. `11-04` Cloud sync offline queue + reconciliation
 
 ### Follow-up Batch
 1. `11-03` Local-only mode data layer

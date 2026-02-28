@@ -54,7 +54,20 @@ Default DB URL expected by `.env.example`:
 | `BASIC_AUTH_PASS` | optional | required when `REQUIRE_AUTH=true` | required when `REQUIRE_AUTH=true` | conditional |
 | `REQUIRE_USER_ACCOUNTS` | `false` | `false` or `true` | `true` (recommended) | optional |
 | `SESSION_TTL_HOURS` | `720` | `720` | `720` | optional |
-| `EMAIL_PROVIDER` | `disabled` or `log` | `resend` (recommended) | `resend` (recommended) | optional |
+| `SESSION_TRANSPORT` | `bearer` | `hybrid` | `cookie` or `hybrid` | optional |
+| `SESSION_COOKIE_NAME` | `home_inventory_session` | `home_inventory_session` | `home_inventory_session` | optional |
+| `SESSION_COOKIE_DOMAIN` | empty | optional | optional | optional |
+| `SESSION_COOKIE_SECURE` | `false` | `true` | `true` | optional |
+| `SESSION_COOKIE_SAME_SITE` | `lax` | `lax` | `lax` | optional |
+| `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `900` | `900` | `900` | optional |
+| `AUTH_REGISTER_RATE_LIMIT_MAX` | `20` | `20` | `20` | optional |
+| `AUTH_LOGIN_RATE_LIMIT_MAX` | `30` | `30` | `30` | optional |
+| `AUTH_FORGOT_PASSWORD_RATE_LIMIT_MAX` | `6` | `6` | `6` | optional |
+| `AUTH_RESET_PASSWORD_RATE_LIMIT_MAX` | `20` | `20` | `20` | optional |
+| `AUTH_LOGIN_FAILURE_MAX_ATTEMPTS` | `6` | `6` | `6` | optional |
+| `AUTH_LOGIN_FAILURE_WINDOW_SECONDS` | `900` | `900` | `900` | optional |
+| `AUTH_LOGIN_FAILURE_LOCKOUT_SECONDS` | `900` | `900` | `900` | optional |
+| `EMAIL_PROVIDER` | `log` or `disabled` | `resend` (recommended) | `resend` (recommended) | optional |
 | `EMAIL_FROM` | optional | required when `EMAIL_PROVIDER=resend` | required when `EMAIL_PROVIDER=resend` | conditional |
 | `EMAIL_REPLY_TO` | optional | optional | optional | optional |
 | `EMAIL_RESEND_API_KEY` | optional | required when `EMAIL_PROVIDER=resend` | required when `EMAIL_PROVIDER=resend` | conditional |
@@ -87,11 +100,13 @@ Semantic search supports:
   - if neither live nor cached result is available, the API falls back to local memory ranking.
 
 When `REQUIRE_AUTH=true`, all endpoints except `/health` require HTTP Basic auth.
-When `REQUIRE_USER_ACCOUNTS=true`, all endpoints except `/health` and `/auth/*` require a bearer session token.
+When `REQUIRE_USER_ACCOUNTS=true`, all endpoints except `/health` and `/auth/*` require a valid user session
+(Bearer token and/or HttpOnly cookie based on `SESSION_TRANSPORT`).
 Do not set both to `true` in-app at the same time (both rely on the `Authorization` header).
 
 Email delivery modes:
-- `EMAIL_PROVIDER=disabled`: local/dev fallback, raw verification/reset/invite tokens are returned in API responses.
+- `EMAIL_PROVIDER=disabled`: email delivery is disabled; verification/reset/invite APIs never return raw token secrets.
+  - Use `log` or `resend` when you need usable reset/verification/invite links.
 - `EMAIL_PROVIDER=log`: delivery is simulated via structured server logs; raw tokens are suppressed from responses.
 - `EMAIL_PROVIDER=resend`: transactional email is sent via Resend API; raw tokens are suppressed from responses.
 
@@ -280,7 +295,7 @@ Notes:
 - `locations.code` is unique per owner account; legacy unowned records keep global uniqueness.
 - `keywords` is `text[]`.
 - `updated_at` is automatically refreshed on updates.
-- Inventory routes are owner-scoped when a valid bearer user session is present.
+- Inventory routes are owner/household scoped when a valid authenticated user session is present.
 
 ## Legacy Owner Bootstrap (One-Time Migration)
 

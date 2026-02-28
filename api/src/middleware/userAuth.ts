@@ -18,6 +18,48 @@ function parseBearerToken(headerValue: string | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function parseCookieValue(headerValue: string | undefined, name: string): string | null {
+  if (!headerValue || !name) {
+    return null;
+  }
+
+  const segments = headerValue.split(";");
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const separatorIdx = trimmed.indexOf("=");
+    if (separatorIdx <= 0) {
+      continue;
+    }
+    const key = trimmed.slice(0, separatorIdx).trim();
+    if (key !== name) {
+      continue;
+    }
+    const rawValue = trimmed.slice(separatorIdx + 1).trim();
+    if (!rawValue) {
+      return null;
+    }
+    try {
+      const decoded = decodeURIComponent(rawValue);
+      return decoded.length > 0 ? decoded : null;
+    } catch {
+      return rawValue.length > 0 ? rawValue : null;
+    }
+  }
+
+  return null;
+}
+
+function resolveSessionToken(req: Request): string | null {
+  const bearerToken = parseBearerToken(req.headers.authorization);
+  if (bearerToken) {
+    return bearerToken;
+  }
+  return parseCookieValue(req.headers.cookie, env.sessionCookieName);
+}
+
 function skipSessionAttach(req: Request): boolean {
   return req.path === "/auth/register" || req.path === "/auth/login";
 }
@@ -36,7 +78,7 @@ export async function attachUserSession(
     return;
   }
 
-  const token = parseBearerToken(req.headers.authorization);
+  const token = resolveSessionToken(req);
   if (!token) {
     next();
     return;
@@ -58,11 +100,7 @@ export async function attachUserSession(
     );
 
     if (result.rowCount === 0) {
-      if (req.path.startsWith("/auth/")) {
-        next();
-        return;
-      }
-      res.status(401).json({ error: "Invalid or expired session" });
+      next();
       return;
     }
 

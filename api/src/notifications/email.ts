@@ -8,6 +8,10 @@ type EmailMessage = {
   html: string;
 };
 
+export type LoggedEmailMessage = EmailMessage & {
+  created_at: string;
+};
+
 export type EmailSendResult = {
   sent: boolean;
   provider: string;
@@ -34,6 +38,16 @@ type HouseholdInviteEmailInput = {
   householdName?: string | null;
   invitedByEmail?: string | null;
 };
+
+const loggedEmailOutbox: LoggedEmailMessage[] = [];
+
+export function getLoggedEmailOutboxForTests(): LoggedEmailMessage[] {
+  return [...loggedEmailOutbox];
+}
+
+export function clearLoggedEmailOutboxForTests(): void {
+  loggedEmailOutbox.length = 0;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -98,6 +112,13 @@ export async function sendEmail(message: EmailMessage): Promise<EmailSendResult>
   }
 
   if (env.emailProvider === "log") {
+    loggedEmailOutbox.push({
+      to: message.to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+      created_at: new Date().toISOString(),
+    });
     console.info(
       JSON.stringify({
         event: "email.send",

@@ -19,6 +19,33 @@ const s3Bucket = process.env.S3_BUCKET ?? "";
 const basicAuthUser = process.env.BASIC_AUTH_USER ?? "";
 const basicAuthPass = process.env.BASIC_AUTH_PASS ?? "";
 const sessionTtlHoursRaw = Number(process.env.SESSION_TTL_HOURS ?? "720");
+const sessionTransportRaw = (process.env.SESSION_TRANSPORT ?? "bearer").trim().toLowerCase();
+const sessionCookieName = (process.env.SESSION_COOKIE_NAME ?? "home_inventory_session").trim();
+const sessionCookieDomain = (process.env.SESSION_COOKIE_DOMAIN ?? "").trim();
+const sessionCookieSecureRaw = (
+  process.env.SESSION_COOKIE_SECURE ?? (process.env.NODE_ENV === "production" ? "true" : "false")
+)
+  .trim()
+  .toLowerCase();
+const sessionCookieSameSiteRaw = (process.env.SESSION_COOKIE_SAME_SITE ?? "lax")
+  .trim()
+  .toLowerCase();
+const authRateLimitWindowSecondsRaw = Number(process.env.AUTH_RATE_LIMIT_WINDOW_SECONDS ?? "900");
+const authRegisterRateLimitMaxRaw = Number(process.env.AUTH_REGISTER_RATE_LIMIT_MAX ?? "20");
+const authLoginRateLimitMaxRaw = Number(process.env.AUTH_LOGIN_RATE_LIMIT_MAX ?? "30");
+const authForgotPasswordRateLimitMaxRaw = Number(
+  process.env.AUTH_FORGOT_PASSWORD_RATE_LIMIT_MAX ?? "6"
+);
+const authResetPasswordRateLimitMaxRaw = Number(
+  process.env.AUTH_RESET_PASSWORD_RATE_LIMIT_MAX ?? "20"
+);
+const authLoginFailureMaxAttemptsRaw = Number(process.env.AUTH_LOGIN_FAILURE_MAX_ATTEMPTS ?? "6");
+const authLoginFailureWindowSecondsRaw = Number(
+  process.env.AUTH_LOGIN_FAILURE_WINDOW_SECONDS ?? "900"
+);
+const authLoginFailureLockoutSecondsRaw = Number(
+  process.env.AUTH_LOGIN_FAILURE_LOCKOUT_SECONDS ?? "900"
+);
 const emailProviderRaw = (process.env.EMAIL_PROVIDER ?? "disabled").trim().toLowerCase();
 const emailFrom = process.env.EMAIL_FROM ?? "";
 const emailReplyTo = process.env.EMAIL_REPLY_TO ?? "";
@@ -77,6 +104,8 @@ export function resolveRequireUserAccounts(): boolean {
 
 export type SearchProvider = "pinecone" | "memory";
 export type EmailProvider = "disabled" | "log" | "resend";
+export type SessionTransport = "bearer" | "cookie" | "hybrid";
+export type SessionCookieSameSite = "strict" | "lax" | "none";
 
 export function resolveSearchProvider(): SearchProvider {
   if (searchProviderRaw === "pinecone" || searchProviderRaw === "memory") {
@@ -94,6 +123,55 @@ function resolveEmailProvider(): EmailProvider {
     return emailProviderRaw;
   }
   throw new Error("EMAIL_PROVIDER must be set to 'disabled', 'log', or 'resend'.");
+}
+
+function resolveSessionTransport(): SessionTransport {
+  if (
+    sessionTransportRaw === "bearer" ||
+    sessionTransportRaw === "cookie" ||
+    sessionTransportRaw === "hybrid"
+  ) {
+    return sessionTransportRaw;
+  }
+  throw new Error("SESSION_TRANSPORT must be set to 'bearer', 'cookie', or 'hybrid'.");
+}
+
+function resolveSessionCookieSecure(): boolean {
+  if (sessionCookieSecureRaw === "true") {
+    return true;
+  }
+  if (sessionCookieSecureRaw === "false") {
+    return false;
+  }
+  throw new Error("SESSION_COOKIE_SECURE must be true or false when set.");
+}
+
+function resolveSessionCookieSameSite(): SessionCookieSameSite {
+  if (
+    sessionCookieSameSiteRaw === "strict" ||
+    sessionCookieSameSiteRaw === "lax" ||
+    sessionCookieSameSiteRaw === "none"
+  ) {
+    return sessionCookieSameSiteRaw;
+  }
+  throw new Error("SESSION_COOKIE_SAME_SITE must be set to strict, lax, or none.");
+}
+
+function resolvePositiveCount(
+  rawValue: number,
+  name: string,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  if (!Number.isFinite(rawValue)) {
+    return fallback;
+  }
+  const normalized = Math.trunc(rawValue);
+  if (normalized < min || normalized > max) {
+    throw new Error(`${name} must be between ${min} and ${max}.`);
+  }
+  return normalized;
 }
 
 function resolveSiriRequireMutationConfirmation(): boolean {
@@ -137,6 +215,9 @@ const enableDevRoutes = resolveEnableDevRoutes();
 const requireAuth = resolveRequireAuth();
 const requireUserAccounts = resolveRequireUserAccounts();
 const emailProvider = resolveEmailProvider();
+const sessionTransport = resolveSessionTransport();
+const sessionCookieSecure = resolveSessionCookieSecure();
+const sessionCookieSameSite = resolveSessionCookieSameSite();
 const searchProvider = resolveSearchProvider();
 const siriRequireMutationConfirmation = resolveSiriRequireMutationConfirmation();
 const semanticCacheEnabled = resolveSemanticCacheEnabled();
@@ -157,6 +238,62 @@ const semanticCacheStaleIfErrorSeconds = resolvePositiveSeconds(
 const sessionTtlHours = Number.isFinite(sessionTtlHoursRaw)
   ? Math.min(Math.max(Math.trunc(sessionTtlHoursRaw), 1), 24 * 365)
   : 720;
+const authRateLimitWindowSeconds = resolvePositiveSeconds(
+  authRateLimitWindowSecondsRaw,
+  "AUTH_RATE_LIMIT_WINDOW_SECONDS",
+  900,
+  1,
+  24 * 60 * 60
+);
+const authRegisterRateLimitMax = resolvePositiveCount(
+  authRegisterRateLimitMaxRaw,
+  "AUTH_REGISTER_RATE_LIMIT_MAX",
+  20,
+  1,
+  10_000
+);
+const authLoginRateLimitMax = resolvePositiveCount(
+  authLoginRateLimitMaxRaw,
+  "AUTH_LOGIN_RATE_LIMIT_MAX",
+  30,
+  1,
+  10_000
+);
+const authForgotPasswordRateLimitMax = resolvePositiveCount(
+  authForgotPasswordRateLimitMaxRaw,
+  "AUTH_FORGOT_PASSWORD_RATE_LIMIT_MAX",
+  6,
+  1,
+  10_000
+);
+const authResetPasswordRateLimitMax = resolvePositiveCount(
+  authResetPasswordRateLimitMaxRaw,
+  "AUTH_RESET_PASSWORD_RATE_LIMIT_MAX",
+  20,
+  1,
+  10_000
+);
+const authLoginFailureMaxAttempts = resolvePositiveCount(
+  authLoginFailureMaxAttemptsRaw,
+  "AUTH_LOGIN_FAILURE_MAX_ATTEMPTS",
+  6,
+  1,
+  10_000
+);
+const authLoginFailureWindowSeconds = resolvePositiveSeconds(
+  authLoginFailureWindowSecondsRaw,
+  "AUTH_LOGIN_FAILURE_WINDOW_SECONDS",
+  900,
+  1,
+  24 * 60 * 60
+);
+const authLoginFailureLockoutSeconds = resolvePositiveSeconds(
+  authLoginFailureLockoutSecondsRaw,
+  "AUTH_LOGIN_FAILURE_LOCKOUT_SECONDS",
+  900,
+  1,
+  24 * 60 * 60
+);
 
 if (!databaseUrl) {
   throw new Error("DATABASE_URL is required");
@@ -182,12 +319,29 @@ if (emailProvider === "resend" && (!emailFrom || !emailResendApiKey)) {
   throw new Error("EMAIL_FROM and EMAIL_RESEND_API_KEY are required when EMAIL_PROVIDER=resend");
 }
 
+if (sessionCookieSameSite === "none" && !sessionCookieSecure) {
+  throw new Error("SESSION_COOKIE_SECURE must be true when SESSION_COOKIE_SAME_SITE=none");
+}
+
 export const env = {
   port,
   databaseUrl,
   enableDevRoutes,
   requireAuth,
   requireUserAccounts,
+  sessionTransport,
+  sessionCookieName,
+  sessionCookieDomain,
+  sessionCookieSecure,
+  sessionCookieSameSite,
+  authRateLimitWindowSeconds,
+  authRegisterRateLimitMax,
+  authLoginRateLimitMax,
+  authForgotPasswordRateLimitMax,
+  authResetPasswordRateLimitMax,
+  authLoginFailureMaxAttempts,
+  authLoginFailureWindowSeconds,
+  authLoginFailureLockoutSeconds,
   emailProvider,
   emailFrom,
   emailReplyTo,

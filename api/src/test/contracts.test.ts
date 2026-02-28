@@ -8,6 +8,7 @@ import { Pool } from "pg";
 
 type AppModule = typeof import("../app");
 type MigrationsModule = typeof import("../db/migrations");
+type EmailModule = typeof import("../notifications/email");
 type RedirectMode = "follow" | "error" | "manual";
 
 const testEnvPath = path.resolve(__dirname, "../../.env.test");
@@ -17,7 +18,8 @@ dotenv.config({ path: testEnvPath });
 dotenv.config({ path: defaultEnvPath });
 process.env.REQUIRE_AUTH = "false";
 process.env.REQUIRE_USER_ACCOUNTS = "false";
-process.env.EMAIL_PROVIDER = "disabled";
+process.env.EMAIL_PROVIDER = "log";
+process.env.SESSION_TRANSPORT = "hybrid";
 process.env.AWS_REGION = "";
 process.env.S3_BUCKET = "";
 process.env.SEARCH_PROVIDER = process.env.SEARCH_PROVIDER ?? "memory";
@@ -41,6 +43,8 @@ let server: ReturnType<AppModule["default"]["listen"]>;
 let app: AppModule["default"];
 let pool: Pool;
 let applyPendingMigrations: MigrationsModule["applyPendingMigrations"];
+let getLoggedEmailOutboxForTests: EmailModule["getLoggedEmailOutboxForTests"];
+let clearLoggedEmailOutboxForTests: EmailModule["clearLoggedEmailOutboxForTests"];
 
 async function request(
   requestPath: string,
@@ -95,6 +99,34 @@ async function request(
   return { status: response.status, json, headers: response.headers };
 }
 
+function latestEmailFor(to: string): { to: string; subject: string; text: string } {
+  const outbox = getLoggedEmailOutboxForTests();
+  for (let index = outbox.length - 1; index >= 0; index -= 1) {
+    const message = outbox[index];
+    if (message.to === to) {
+      return message;
+    }
+  }
+  throw new Error(`No logged email found for ${to}`);
+}
+
+function extractTokenFromEmail(
+  messageText: string,
+  mode: "reset-password" | "verify-email" | "accept-invite"
+): string {
+  const urlMatch = messageText.match(/https?:\/\/\S+/);
+  if (!urlMatch) {
+    throw new Error("No URL found in email text");
+  }
+  const parsed = new URL(urlMatch[0]);
+  assert.equal(parsed.searchParams.get("mode"), mode);
+  const token = parsed.searchParams.get("token");
+  if (!token) {
+    throw new Error("Token query parameter missing from email URL");
+  }
+  return token;
+}
+
 async function resetDatabase(): Promise<void> {
   await pool.query("DROP TABLE IF EXISTS semantic_search_cache CASCADE");
   await pool.query("DROP TABLE IF EXISTS siri_idempotency_keys CASCADE");
@@ -136,10 +168,13 @@ before(async () => {
   const appModule = await import("../app");
   const poolModule = await import("../db/pool");
   const migrationsModule = await import("../db/migrations");
+  const emailModule = await import("../notifications/email");
 
   app = appModule.default;
   pool = poolModule.pool;
   applyPendingMigrations = migrationsModule.applyPendingMigrations;
+  getLoggedEmailOutboxForTests = emailModule.getLoggedEmailOutboxForTests;
+  clearLoggedEmailOutboxForTests = emailModule.clearLoggedEmailOutboxForTests;
 
   await resetDatabase();
   server = app.listen(0);
@@ -149,6 +184,7 @@ before(async () => {
 
 beforeEach(async () => {
   await clearData();
+  clearLoggedEmailOutboxForTests();
 });
 
 after(async () => {
@@ -2226,12 +2262,15 @@ test("Auth register/login/logout flow issues and revokes bearer sessions", async
     user: { id: string; email: string; display_name: string | null };
     token: string;
     expires_at: string;
+    session_transport: string;
   };
 
   assert.equal(registerJson.user.email, "owner1@example.com");
   assert.equal(registerJson.user.display_name, "Owner One");
-  assert.ok(registerJson.token.length > 20);
+  assert.ok(typeof registerJson.token === "string" && registerJson.token.length > 20);
   assert.ok(typeof registerJson.expires_at === "string");
+  assert.equal(registerJson.session_transport, "hybrid");
+  assert.ok((registered.headers.get("set-cookie") ?? "").includes("home_inventory_session="));
 
   const me = await request("/auth/me", { token: registerJson.token });
   assert.equal(me.status, 200);
@@ -2241,7 +2280,8 @@ test("Auth register/login/logout flow issues and revokes bearer sessions", async
     token: registerJson.token,
   });
   assert.equal(loggedOut.status, 200);
-  assert.deepEqual(loggedOut.json, { logged_out: true });
+  assert.deepEqual(loggedOut.json, { logged_out: true, session_transport: "hybrid" });
+  assert.ok((loggedOut.headers.get("set-cookie") ?? "").includes("Max-Age=0"));
 
   const meAfterLogout = await request("/auth/me", { token: registerJson.token });
   assert.equal(meAfterLogout.status, 401);
@@ -2251,9 +2291,107 @@ test("Auth register/login/logout flow issues and revokes bearer sessions", async
     body: { email: "owner1@example.com", password: "SuperSecret123!" },
   });
   assert.equal(loggedIn.status, 200);
-  const loginJson = loggedIn.json as { token: string; user: { email: string } };
+  const loginJson = loggedIn.json as {
+    token: string;
+    user: { email: string };
+    session_transport: string;
+  };
   assert.equal(loginJson.user.email, "owner1@example.com");
-  assert.ok(loginJson.token.length > 20);
+  assert.ok(typeof loginJson.token === "string" && loginJson.token.length > 20);
+  assert.equal(loginJson.session_transport, "hybrid");
+  assert.ok((loggedIn.headers.get("set-cookie") ?? "").includes("home_inventory_session="));
+});
+
+test("Cookie session transport supports auth/me and protected routes without bearer token", async () => {
+  const registered = await request("/auth/register", {
+    method: "POST",
+    body: {
+      email: "cookie-user@example.com",
+      password: "CookiePass123!",
+    },
+  });
+  assert.equal(registered.status, 201);
+  const sessionCookie = (registered.headers.get("set-cookie") ?? "").split(";")[0];
+  assert.ok(sessionCookie.startsWith("home_inventory_session="));
+
+  const meViaCookie = await request("/auth/me", {
+    headers: { Cookie: sessionCookie },
+  });
+  assert.equal(meViaCookie.status, 200);
+
+  const householdsViaCookie = await request("/households", {
+    headers: { Cookie: sessionCookie },
+  });
+  assert.equal(householdsViaCookie.status, 200);
+
+  const logoutViaCookie = await request("/auth/logout", {
+    method: "POST",
+    headers: { Cookie: sessionCookie },
+  });
+  assert.equal(logoutViaCookie.status, 200);
+  assert.ok((logoutViaCookie.headers.get("set-cookie") ?? "").includes("Max-Age=0"));
+
+  const meAfterLogout = await request("/auth/me", {
+    headers: { Cookie: sessionCookie },
+  });
+  assert.equal(meAfterLogout.status, 401);
+});
+
+test("Login abuse controls throttle repeated invalid password attempts", async () => {
+  const registered = await request("/auth/register", {
+    method: "POST",
+    body: {
+      email: "lockout-user@example.com",
+      password: "RightPassword123!",
+    },
+  });
+  assert.equal(registered.status, 201);
+
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const invalid = await request("/auth/login", {
+      method: "POST",
+      body: { email: "lockout-user@example.com", password: `Wrong-${attempt}` },
+    });
+    assert.equal(invalid.status, 401);
+  }
+
+  const throttled = await request("/auth/login", {
+    method: "POST",
+    body: { email: "lockout-user@example.com", password: "Wrong-final" },
+  });
+  assert.equal(throttled.status, 429);
+  assert.ok((throttled.headers.get("retry-after") ?? "").length > 0);
+  assert.deepEqual(throttled.json, { error: "Too many invalid login attempts. Try again later." });
+});
+
+test("Forgot-password abuse controls throttle repeated reset requests", async () => {
+  const registered = await request("/auth/register", {
+    method: "POST",
+    body: {
+      email: "forgot-throttle@example.com",
+      password: "ResetPass123!",
+    },
+  });
+  assert.equal(registered.status, 201);
+
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    const forgot = await request("/auth/forgot-password", {
+      method: "POST",
+      body: { email: "forgot-throttle@example.com" },
+    });
+    assert.equal(forgot.status, 200);
+    assert.deepEqual(forgot.json, { accepted: true });
+  }
+
+  const throttled = await request("/auth/forgot-password", {
+    method: "POST",
+    body: { email: "forgot-throttle@example.com" },
+  });
+  assert.equal(throttled.status, 429);
+  assert.ok((throttled.headers.get("retry-after") ?? "").length > 0);
+  assert.deepEqual(throttled.json, {
+    error: "Too many password reset requests. Try again later.",
+  });
 });
 
 test("Password reset flow issues one-time token and rotates credentials", async () => {
@@ -2265,32 +2403,38 @@ test("Password reset flow issues one-time token and rotates credentials", async 
     },
   });
   assert.equal(registered.status, 201);
+  const registeredJson = registered.json as { token: string };
+  const registerToken = registeredJson.token;
+  const registerCookie = (registered.headers.get("set-cookie") ?? "").split(";")[0];
 
   const forgot = await request("/auth/forgot-password", {
     method: "POST",
     body: { email: "reset-user@example.com" },
   });
   assert.equal(forgot.status, 200);
-
-  const forgotJson = forgot.json as {
-    accepted: boolean;
-    reset_token: string | null;
-    expires_at: string | null;
-  };
-  assert.equal(forgotJson.accepted, true);
-  assert.ok(typeof forgotJson.reset_token === "string" && forgotJson.reset_token.length > 20);
-  assert.ok(typeof forgotJson.expires_at === "string");
+  assert.deepEqual(forgot.json, { accepted: true });
+  const resetEmail = latestEmailFor("reset-user@example.com");
+  const resetToken = extractTokenFromEmail(resetEmail.text, "reset-password");
 
   const reset = await request("/auth/reset-password", {
     method: "POST",
-    body: { token: forgotJson.reset_token, new_password: "NewPassword123!" },
+    body: { token: resetToken, new_password: "NewPassword123!" },
   });
   assert.equal(reset.status, 200);
   assert.deepEqual(reset.json, { reset: true });
+  assert.ok((reset.headers.get("set-cookie") ?? "").includes("Max-Age=0"));
+
+  const revokedBearerSession = await request("/auth/me", { token: registerToken });
+  assert.equal(revokedBearerSession.status, 401);
+
+  const revokedCookieSession = await request("/auth/me", {
+    headers: { Cookie: registerCookie },
+  });
+  assert.equal(revokedCookieSession.status, 401);
 
   const reused = await request("/auth/reset-password", {
     method: "POST",
-    body: { token: forgotJson.reset_token, new_password: "AnotherPassword123!" },
+    body: { token: resetToken, new_password: "AnotherPassword123!" },
   });
   assert.equal(reused.status, 400);
 
@@ -2337,13 +2481,15 @@ test("Email verification flow issues one-time token and marks account verified",
     already_verified: boolean;
     verification_token: string | null;
     expires_at: string | null;
+    delivery?: string;
   };
   assert.equal(issueJson.accepted, true);
   assert.equal(issueJson.already_verified, false);
-  assert.ok(
-    typeof issueJson.verification_token === "string" && issueJson.verification_token.length > 20
-  );
+  assert.equal(issueJson.verification_token, null);
   assert.ok(typeof issueJson.expires_at === "string");
+  assert.equal(issueJson.delivery, "sent");
+  const issueEmail = latestEmailFor("verify-user@example.com");
+  const issuedVerificationToken = extractTokenFromEmail(issueEmail.text, "verify-email");
 
   const resend = await request("/auth/verify-email/resend", {
     method: "POST",
@@ -2355,13 +2501,17 @@ test("Email verification flow issues one-time token and marks account verified",
     already_verified: boolean;
     verification_token: string | null;
     expires_at: string | null;
+    delivery?: string;
   };
   assert.equal(resendJson.accepted, true);
   assert.equal(resendJson.already_verified, false);
-  const resendToken = resendJson.verification_token;
-  assert.ok(typeof resendToken === "string" && resendToken.length > 20);
+  assert.equal(resendJson.verification_token, null);
+  const resendEmail = latestEmailFor("verify-user@example.com");
+  const resendToken = extractTokenFromEmail(resendEmail.text, "verify-email");
+  assert.ok(resendToken.length > 20);
   assert.ok(typeof resendJson.expires_at === "string");
-  assert.notEqual(resendJson.verification_token, issueJson.verification_token);
+  assert.equal(resendJson.delivery, "sent");
+  assert.notEqual(resendToken, issuedVerificationToken);
 
   const badConfirm = await request("/auth/verify-email/confirm", {
     method: "POST",
@@ -2537,12 +2687,16 @@ test("Household invite acceptance enforces owner controls and email matching", a
   assert.equal(invite.status, 201);
   const inviteJson = invite.json as {
     invitation: { id: string; household_id: string; email: string; role: string };
-    invitation_token: string;
+    delivery: string;
   };
   assert.equal(inviteJson.invitation.household_id, householdId);
   assert.equal(inviteJson.invitation.email, "hh-invitee@example.com");
   assert.equal(inviteJson.invitation.role, "editor");
-  assert.ok(inviteJson.invitation_token.length > 20);
+  assert.equal(inviteJson.delivery, "sent");
+  const invitationToken = extractTokenFromEmail(
+    latestEmailFor("hh-invitee@example.com").text,
+    "accept-invite"
+  );
 
   const duplicateInvite = await request(`/households/${householdId}/invitations`, {
     method: "POST",
@@ -2554,14 +2708,14 @@ test("Household invite acceptance enforces owner controls and email matching", a
   const outsiderAccept = await request("/households/invitations/accept", {
     method: "POST",
     token: outsiderToken,
-    body: { token: inviteJson.invitation_token },
+    body: { token: invitationToken },
   });
   assert.equal(outsiderAccept.status, 403);
 
   const inviteeAccept = await request("/households/invitations/accept", {
     method: "POST",
     token: inviteeToken,
-    body: { token: inviteJson.invitation_token },
+    body: { token: invitationToken },
   });
   assert.equal(inviteeAccept.status, 200);
   assert.deepEqual(inviteeAccept.json, {
@@ -2618,8 +2772,13 @@ test("Household invitation revoke invalidates pending token", async () => {
   assert.equal(invite.status, 201);
   const inviteJson = invite.json as {
     invitation: { id: string };
-    invitation_token: string;
+    delivery: string;
   };
+  assert.equal(inviteJson.delivery, "sent");
+  const revokedToken = extractTokenFromEmail(
+    latestEmailFor("hh-revoke-invitee@example.com").text,
+    "accept-invite"
+  );
 
   const revoked = await request(
     `/households/${householdId}/invitations/${inviteJson.invitation.id}`,
@@ -2634,7 +2793,7 @@ test("Household invitation revoke invalidates pending token", async () => {
   const acceptRevoked = await request("/households/invitations/accept", {
     method: "POST",
     token: inviteeToken,
-    body: { token: inviteJson.invitation_token },
+    body: { token: revokedToken },
   });
   assert.equal(acceptRevoked.status, 400);
   assert.deepEqual(acceptRevoked.json, { error: "Invalid or expired invitation token" });
@@ -2669,7 +2828,12 @@ test("Household members can collaborate within shared household scope", async ()
     body: { email: "collab-editor@example.com", role: "editor" },
   });
   assert.equal(invite.status, 201);
-  const invitationToken = (invite.json as { invitation_token: string }).invitation_token;
+  const inviteJson = invite.json as { delivery: string };
+  assert.equal(inviteJson.delivery, "sent");
+  const invitationToken = extractTokenFromEmail(
+    latestEmailFor("collab-editor@example.com").text,
+    "accept-invite"
+  );
 
   const accept = await request("/households/invitations/accept", {
     method: "POST",
@@ -2797,7 +2961,12 @@ test("Viewer role remains read-only in shared household scope", async () => {
     body: { email: "viewer-user@example.com", role: "viewer" },
   });
   assert.equal(invite.status, 201);
-  const invitationToken = (invite.json as { invitation_token: string }).invitation_token;
+  const inviteJson = invite.json as { delivery: string };
+  assert.equal(inviteJson.delivery, "sent");
+  const invitationToken = extractTokenFromEmail(
+    latestEmailFor("viewer-user@example.com").text,
+    "accept-invite"
+  );
 
   const accept = await request("/households/invitations/accept", {
     method: "POST",
@@ -2960,7 +3129,12 @@ test("Household owners can list invites, update roles, and remove members", asyn
     body: { email: "manage-member@example.com", role: "viewer" },
   });
   assert.equal(memberInvite.status, 201);
-  const memberInviteToken = (memberInvite.json as { invitation_token: string }).invitation_token;
+  const memberInviteJson = memberInvite.json as { delivery: string };
+  assert.equal(memberInviteJson.delivery, "sent");
+  const memberInviteToken = extractTokenFromEmail(
+    latestEmailFor("manage-member@example.com").text,
+    "accept-invite"
+  );
 
   const pendingInvite = await request(`/households/${householdId}/invitations`, {
     method: "POST",
