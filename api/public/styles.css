@@ -306,10 +306,30 @@ label {
 
 .search-row input {
   flex: 1;
+  min-width: 0;
 }
 
 .search-row select {
   min-width: 132px;
+}
+
+#searchPanel .search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 152px auto;
+  align-items: center;
+}
+
+#searchPanel #query {
+  width: 100%;
+}
+
+#searchPanel #searchMode {
+  width: 100%;
+  min-width: 0;
+}
+
+#searchPanel #searchBtn {
+  white-space: nowrap;
 }
 
 input,
@@ -847,6 +867,10 @@ button.danger {
   .hero-actions,
   .actions-row {
     flex-direction: column;
+  }
+
+  #searchPanel .search-row {
+    grid-template-columns: 1fr;
   }
 
   .workspace-panel,
