@@ -195,6 +195,13 @@ For the full step-by-step runbook, use:
 
 ## Backup / Restore
 
+Script auth options:
+- HTTP gate: `BASIC_AUTH_USER` + `BASIC_AUTH_PASS` (only when `REQUIRE_AUTH=true`).
+- App session (choose one):
+  - `AUTH_BEARER_TOKEN=<token>` (cannot be combined with basic auth, because both use `Authorization` header)
+  - `AUTH_EMAIL=<email> AUTH_PASSWORD=<password>` (logs in each run; supports bearer/cookie session modes and automatically uses cookies when basic auth is enabled)
+- Optional scope pinning: `HOUSEHOLD_ID=<uuid>`. If omitted and exactly one household is accessible, scripts auto-select it; if multiple are accessible, scripts fail and require explicit `HOUSEHOLD_ID`.
+
 - Export JSON snapshot:
   - `curl http://localhost:4000/export/inventory > backup.json`
 - Restore from snapshot:
@@ -205,8 +212,16 @@ For the full step-by-step runbook, use:
   - `curl -X POST "http://localhost:4000/import/inventory?remap_ids=true" -H "Content-Type: application/json" --data-binary @backup.json`
 - Scheduled backup with retention:
   - `BASE_URL=https://staging-inventory.your-domain.com RETAIN_DAYS=14 ./scripts/backup.sh`
+- Scheduled backup with bearer auth + household scope:
+  - `BASE_URL=https://staging-inventory.your-domain.com AUTH_BEARER_TOKEN=<token> HOUSEHOLD_ID=<household_id> RETAIN_DAYS=14 ./scripts/backup.sh`
+- Scheduled backup with login-per-run auth:
+  - `BASE_URL=https://staging-inventory.your-domain.com AUTH_EMAIL=<email> AUTH_PASSWORD=<password> HOUSEHOLD_ID=<household_id> RETAIN_DAYS=14 ./scripts/backup.sh`
 - Restore drill (safe validation mode):
   - `BASE_URL=https://staging-inventory.your-domain.com ./scripts/restore-drill.sh`
+- Restore drill with bearer auth + household scope:
+  - `BASE_URL=https://staging-inventory.your-domain.com AUTH_BEARER_TOKEN=<token> HOUSEHOLD_ID=<household_id> ./scripts/restore-drill.sh`
+- Restore drill with login-per-run auth:
+  - `BASE_URL=https://staging-inventory.your-domain.com AUTH_EMAIL=<email> AUTH_PASSWORD=<password> HOUSEHOLD_ID=<household_id> ./scripts/restore-drill.sh`
 - Restore drill merge mode (non-destructive to existing IDs):
   - `BASE_URL=https://staging-inventory.your-domain.com DRILL_MODE=merge ./scripts/restore-drill.sh`
 - Full replace restore drill (destructive):
@@ -271,6 +286,8 @@ Notes:
   - `BASE_URL=https://staging-inventory.your-domain.com BASIC_AUTH_USER=<user> BASIC_AUTH_PASS=<pass> CHECK_UPLOADS=true ./scripts/smoke.sh`
 - With bearer auth + household scope:
   - `BASE_URL=https://staging-inventory.your-domain.com AUTH_BEARER_TOKEN=<token> HOUSEHOLD_ID=<household_id> CHECK_QUANTITY=true ./scripts/smoke.sh`
+- With login-per-run auth:
+  - `BASE_URL=https://staging-inventory.your-domain.com AUTH_EMAIL=<email> AUTH_PASSWORD=<password> HOUSEHOLD_ID=<household_id> CHECK_QUANTITY=true ./scripts/smoke.sh`
 
 ## Current Migration Set
 
