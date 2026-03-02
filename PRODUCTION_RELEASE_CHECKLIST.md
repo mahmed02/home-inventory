@@ -74,8 +74,8 @@ Commands:
 - `BASE_URL=https://<prod-domain> AUTH_EMAIL=<account_email> AUTH_PASSWORD=<account_password> HOUSEHOLD_ID=<household_id> ./scripts/restore-drill.sh`
 
 Evidence:
-- Last backup file: `__________________`
-- Restore drill result/time: `__________________`
+- Last backup file: `/srv/home_inventory/backups/inventory-20260302T063436Z.json`
+- Restore drill result/time: `Succeeded; Backup time UTC: 2026-03-02T06:34:36Z`
 
 ### P0-05) Monitoring and alerting are in place
 - [ ] External uptime check for `/health`
