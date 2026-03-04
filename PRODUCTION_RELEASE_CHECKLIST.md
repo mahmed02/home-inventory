@@ -24,48 +24,48 @@ Go/No-Go rule:
 ## P0 (Must Have Before Public Launch)
 
 ### P0-01) Transactional email is working (reset/verify/invite)
-- [ ] `EMAIL_PROVIDER=resend` configured in production env
-- [ ] `EMAIL_FROM` uses verified sender domain
-- [ ] `EMAIL_RESEND_API_KEY` valid in runtime process
-- [ ] Forgot-password sends to real inbox
-- [ ] Verify-email sends to real inbox
-- [ ] Household invite sends to real inbox
-- [ ] No `delivery":"failed"` in API responses during smoke
+- [x] `EMAIL_PROVIDER=resend` configured in production env
+- [x] `EMAIL_FROM` uses verified sender domain
+- [x] `EMAIL_RESEND_API_KEY` valid in runtime process
+- [x] Forgot-password sends to real inbox
+- [x] Verify-email sends to real inbox
+- [x] Household invite sends to real inbox
+- [x] No `delivery":"failed"` in API responses during smoke
 
 Evidence:
 - `pm2 logs home-inventory-api --lines 200`
 - Curl/API response samples: `________________________________________`
 
 ### P0-02) Auth posture for public users is correct
-- [ ] `REQUIRE_AUTH=false` (no basic-auth wall for customers)
-- [ ] `REQUIRE_USER_ACCOUNTS=true`
-- [ ] `SESSION_TRANSPORT=hybrid` (or `cookie`, if chosen)
-- [ ] `SESSION_COOKIE_SECURE=true`
-- [ ] `SESSION_COOKIE_SAME_SITE=lax` (or stricter if intended)
-- [ ] Register/login/logout works from browser
-- [ ] Password reset flow end-to-end works
+- [x] `REQUIRE_AUTH=false` (no basic-auth wall for customers)
+- [x] `REQUIRE_USER_ACCOUNTS=true`
+- [x] `SESSION_TRANSPORT=hybrid` (or `cookie`, if chosen)
+- [x] `SESSION_COOKIE_SECURE=true`
+- [x] `SESSION_COOKIE_SAME_SITE=lax` (or stricter if intended)
+- [x] Register/login/logout works from browser
+- [x] Password reset flow end-to-end works
 
 Evidence:
 - Env snapshot (`pm2 env 0` selected vars): `_______________________`
 - Browser + curl validation notes: `________________________________`
 
 ### P0-03) Secrets are rotated after prior exposure risk
-- [ ] DB credential rotated
-- [ ] AWS credentials/role keys rotated (if any static keys used)
-- [ ] Resend API key rotated
-- [ ] Any leaked tokens/passwords invalidated
-- [ ] Local secret files confirmed not tracked by git
+- [x] DB credential rotated
+- [x] AWS credentials/role keys rotated (if any static keys used)
+- [x] Resend API key rotated
+- [x] Any leaked tokens/passwords invalidated
+- [x] Local secret files confirmed not tracked by git
 
 Evidence:
 - Rotation date/time (UTC): `__________________`
 - Rotation runbook/notes: `________________________________________`
 
 ### P0-04) Backup and restore are proven
-- [ ] Scheduled backup job enabled (daily minimum)
-- [ ] Retention policy set (recommended 14+ days)
-- [ ] Latest backup artifact verified
-- [ ] Restore drill executed successfully (validate or merge mode minimum)
-- [ ] Recovery steps documented with real timings
+- [x] Scheduled backup job enabled (daily minimum)
+- [x] Retention policy set (recommended 14+ days)
+- [x] Latest backup artifact verified
+- [x] Restore drill executed successfully (validate or merge mode minimum)
+- [x] Recovery steps documented with real timings
 
 Commands:
 - `BASE_URL=https://<prod-domain> ./scripts/backup.sh`
@@ -78,35 +78,35 @@ Evidence:
 - Restore drill result/time: `Succeeded; Backup time UTC: 2026-03-02T06:34:36Z`
 
 ### P0-05) Monitoring and alerting are in place
-- [ ] External uptime check for `/health`
-- [ ] Alerting for process down / 5xx / high error rate
-- [ ] Access to Nginx + API logs
-- [ ] On-call contact for launch window
+- [x] External uptime check for `/health`
+- [x] Alerting for process down / 5xx / high error rate
+- [x] Access to Nginx + API logs
+- [x] On-call contact for launch window
 
 Evidence:
-- Monitoring tool(s): `__________________`
-- Alert channel: `__________________`
+- Monitoring tool(s): `ntfy`
+- Alert channel: `home_inventory_alerts_9094184710383748`
 
 ### P0-06) Release + rollback path is proven
-- [ ] GitHub Actions deploy to production path confirmed
-- [ ] Production environment approval gate enabled
-- [ ] Known-good rollback commit identified
-- [ ] Rollback command/procedure tested in staging with smoke pass
+- [x] GitHub Actions deploy to production path confirmed
+- [x] Production environment approval gate enabled
+- [x] Known-good rollback commit identified
+- [x] Rollback command/procedure tested in staging with smoke pass
 
 Evidence:
-- Rollback ref: `__________________`
-- Last rollback rehearsal: `__________________`
+- Rollback ref: `f56e70d`
+- Last rollback rehearsal: `3/3/2026`
 
 ### P0-07) Production DNS/TLS/cutover is complete
-- [ ] Production DNS record points to correct target
-- [ ] TLS cert valid and auto-renewing
-- [ ] `APP_BASE_URL` set to production HTTPS URL
-- [ ] CORS allowlist is production-safe
-- [ ] `/health` returns 200 over HTTPS
+- [x] Production DNS record points to correct target
+- [x] TLS cert valid and auto-renewing
+- [x] `APP_BASE_URL` set to production HTTPS URL
+- [x] CORS allowlist is production-safe
+- [x] `/health` returns 200 over HTTPS
 
 Evidence:
 - `curl -sv https://<prod-domain>/health`
-- Cert validity dates: `__________________`
+- Cert validity dates: `May 23 21:17:54 2026 GMT`
 
 ---
 
@@ -172,12 +172,12 @@ Email smoke (manual):
 
 ## Launch Sign-off
 
-- [ ] Engineering sign-off
-- [ ] Operations sign-off
-- [ ] Product sign-off
-- [ ] Go/No-Go recorded
+- [x] Engineering sign-off
+- [x] Operations sign-off
+- [x] Product sign-off
+- [x] Go/No-Go recorded
 
 Decision:
-- `GO` / `NO-GO`
-- Timestamp (UTC): `__________________`
-- Notes: `____________________________________________________________`
+- `GO`
+- Timestamp (UTC): `2026-03-04T03:11:39Z`
+- Notes: `P0 complete. DNS/TLS verified on myhomeinventory.net + www. Auth hardening complete. Backup/restore drill and monitoring validated.`
