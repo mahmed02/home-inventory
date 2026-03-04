@@ -2,6 +2,7 @@ const AUTH_TOKEN_STORAGE_KEY = "home_inventory_auth_token";
 const AUTH_USER_STORAGE_KEY = "home_inventory_auth_user";
 const ACTIVE_HOUSEHOLD_STORAGE_KEY = "home_inventory_active_household_id";
 const PENDING_INVITE_TOKEN_STORAGE_KEY = "home_inventory_pending_invite_token";
+const PENDING_RESET_TOKEN_STORAGE_KEY = "home_inventory_pending_reset_token";
 
 const authPageBadgeEl = document.getElementById("authPageBadge");
 const authPageStateHintEl = document.getElementById("authPageStateHint");
@@ -29,12 +30,50 @@ const resetNewPasswordInput = document.getElementById("resetNewPassword");
 
 let authToken = "";
 let authUser = null;
+let authLinkMode = "";
+let authLinkToken = "";
 
 function clearAuthLinkQuery() {
-  if (window.location.search.length === 0) {
+  const currentUrl = new URL(window.location.href);
+  const params = currentUrl.searchParams;
+  const hadMode = params.has("mode");
+  const hadToken = params.has("token");
+  if (!hadMode && !hadToken) {
     return;
   }
-  window.history.replaceState({}, "", "/auth");
+  params.delete("mode");
+  params.delete("token");
+  const nextQuery = params.toString();
+  const nextPath = `${currentUrl.pathname}${nextQuery ? `?${nextQuery}` : ""}${currentUrl.hash}`;
+  window.history.replaceState({}, "", nextPath);
+}
+
+function captureAuthLinkState() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = (params.get("mode") || "").trim().toLowerCase();
+  const token = (params.get("token") || "").trim();
+  if (!mode || !token) {
+    return;
+  }
+
+  authLinkMode = mode;
+  authLinkToken = token;
+
+  if (mode === "accept-invite") {
+    sessionStorage.setItem(PENDING_INVITE_TOKEN_STORAGE_KEY, token);
+  } else if (mode === "reset-password") {
+    sessionStorage.setItem(PENDING_RESET_TOKEN_STORAGE_KEY, token);
+  }
+
+  clearAuthLinkQuery();
+}
+
+function getPendingResetToken() {
+  return (sessionStorage.getItem(PENDING_RESET_TOKEN_STORAGE_KEY) || "").trim();
+}
+
+function clearPendingResetToken() {
+  sessionStorage.removeItem(PENDING_RESET_TOKEN_STORAGE_KEY);
 }
 
 function setStatus(message) {
@@ -169,23 +208,18 @@ async function handleLogout() {
 }
 
 async function handleAuthLinkMode() {
-  const params = new URLSearchParams(window.location.search);
-  const mode = (params.get("mode") || "").trim().toLowerCase();
-  const token = (params.get("token") || "").trim();
+  const mode = authLinkMode;
+  const token = authLinkToken;
   if (!mode || !token) {
     return;
   }
 
   if (mode === "reset-password") {
-    if (resetTokenInput) {
-      resetTokenInput.value = token;
-    }
     const recoveryDetails = document.querySelector(".auth-recovery");
     if (recoveryDetails && "open" in recoveryDetails) {
       recoveryDetails.open = true;
     }
-    setStatus("Reset token loaded from link. Enter a new password to continue.");
-    clearAuthLinkQuery();
+    setStatus("Reset link loaded. Enter a new password to continue.");
     return;
   }
 
@@ -199,15 +233,11 @@ async function handleAuthLinkMode() {
       setStatus("Email verified. You can sign in.");
     } catch (error) {
       setStatus(error.message);
-    } finally {
-      clearAuthLinkQuery();
     }
   }
 
   if (mode === "accept-invite") {
-    sessionStorage.setItem(PENDING_INVITE_TOKEN_STORAGE_KEY, token);
-    setStatus("Invitation token loaded. Sign in to accept it.");
-    clearAuthLinkQuery();
+    setStatus("Invitation loaded. Sign in to accept it.");
   }
 }
 
@@ -241,8 +271,9 @@ if (loginForm) {
       loginForm.reset();
       const inviteToken = consumePendingInviteToken();
       if (inviteToken) {
+        sessionStorage.setItem(PENDING_INVITE_TOKEN_STORAGE_KEY, inviteToken);
         setStatus("Signed in. Redirecting to invitation...");
-        window.location.href = `/manage-household?mode=accept-invite&token=${encodeURIComponent(inviteToken)}`;
+        window.location.href = "/manage-household";
       } else {
         setStatus("Signed in. Redirecting to inventory...");
         window.location.href = "/inventory";
@@ -279,8 +310,9 @@ if (registerForm) {
       registerForm.reset();
       const inviteToken = consumePendingInviteToken();
       if (inviteToken) {
+        sessionStorage.setItem(PENDING_INVITE_TOKEN_STORAGE_KEY, inviteToken);
         setStatus("Account created. Redirecting to invitation...");
-        window.location.href = `/manage-household?mode=accept-invite&token=${encodeURIComponent(inviteToken)}`;
+        window.location.href = "/manage-household";
       } else {
         setStatus("Account created. Redirecting to inventory...");
         window.location.href = "/inventory";
@@ -320,10 +352,10 @@ if (resetPasswordForm) {
   resetPasswordForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const token = resetTokenInput.value.trim();
+    const token = resetTokenInput.value.trim() || getPendingResetToken();
     const newPassword = resetNewPasswordInput.value;
     if (!token || !newPassword) {
-      setStatus("Reset token and new password are required.");
+      setStatus("Reset token (or reset link) and new password are required.");
       return;
     }
 
@@ -334,6 +366,7 @@ if (resetPasswordForm) {
         body: JSON.stringify({ token, new_password: newPassword }),
       });
       resetPasswordForm.reset();
+      clearPendingResetToken();
       setStatus("Password reset successful. You can sign in now.");
     } catch (error) {
       setStatus(error.message);
@@ -352,6 +385,8 @@ if (authPageLogoutBtnSecondaryEl) {
     void handleLogout();
   });
 }
+
+captureAuthLinkState();
 
 window.addEventListener("load", async () => {
   restoreSessionFromStorage();

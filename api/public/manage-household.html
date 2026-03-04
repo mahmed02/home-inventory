@@ -108,7 +108,7 @@
 
                   <form id="resetPasswordForm" class="stack auth-card">
                     <h3>Reset Password</h3>
-                    <input id="resetToken" type="text" placeholder="Reset token" required />
+                    <input id="resetToken" type="password" autocomplete="off" placeholder="Reset token" />
                     <input id="resetNewPassword" type="password" placeholder="New password" required />
                     <button type="submit">Reset Password</button>
                   </form>
@@ -186,7 +186,7 @@
 
               <form id="acceptInviteForm" class="stack household-invite">
                 <h3>Accept Invitation</h3>
-                <input id="acceptInviteToken" type="text" placeholder="Invitation token" required />
+                <input id="acceptInviteToken" type="password" autocomplete="off" placeholder="Invitation token" />
                 <button id="acceptInviteBtn" type="submit">Accept Invite</button>
                 <p class="hint">Use the account that matches the invited email address.</p>
               </form>

@@ -170,6 +170,7 @@ const MAX_CHAT_HISTORY = 20;
 const AUTH_TOKEN_STORAGE_KEY = "home_inventory_auth_token";
 const AUTH_USER_STORAGE_KEY = "home_inventory_auth_user";
 const ACTIVE_HOUSEHOLD_STORAGE_KEY = "home_inventory_active_household_id";
+const PENDING_INVITE_TOKEN_STORAGE_KEY = "home_inventory_pending_invite_token";
 const SEARCH_MODE_STORAGE_KEY = "home_inventory_search_mode";
 const allModals = [
   createActionsModal,
@@ -1028,19 +1029,36 @@ function clearModeAndTokenFromUrlQuery() {
   window.history.replaceState({}, "", nextPath);
 }
 
+function getPendingInviteToken() {
+  return (sessionStorage.getItem(PENDING_INVITE_TOKEN_STORAGE_KEY) || "").trim();
+}
+
+function setPendingInviteToken(token) {
+  if (!token) {
+    sessionStorage.removeItem(PENDING_INVITE_TOKEN_STORAGE_KEY);
+    return;
+  }
+  sessionStorage.setItem(PENDING_INVITE_TOKEN_STORAGE_KEY, token);
+}
+
 function applyInviteAcceptanceFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const mode = (params.get("mode") || "").trim().toLowerCase();
   const token = (params.get("token") || "").trim();
-  if (mode !== "accept-invite" || !token) {
+  if (mode === "accept-invite" && token) {
+    setPendingInviteToken(token);
+    clearModeAndTokenFromUrlQuery();
+  }
+
+  const pendingToken = getPendingInviteToken();
+  if (!pendingToken) {
     return false;
   }
 
   if (acceptInviteTokenInput) {
-    acceptInviteTokenInput.value = token;
+    acceptInviteTokenInput.value = "";
   }
-  clearModeAndTokenFromUrlQuery();
-  setStatus("Invitation token loaded. Click Accept Invite.");
+  setStatus("Invitation loaded. Click Accept Invite.");
   return true;
 }
 
@@ -2367,7 +2385,7 @@ if (acceptInviteForm && acceptInviteTokenInput && acceptInviteBtn) {
   acceptInviteForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const token = acceptInviteTokenInput.value.trim();
+    const token = acceptInviteTokenInput.value.trim() || getPendingInviteToken();
     if (!token) {
       setStatus("Invitation token is required.");
       return;
@@ -2380,6 +2398,7 @@ if (acceptInviteForm && acceptInviteTokenInput && acceptInviteBtn) {
         body: JSON.stringify({ token }),
       });
       acceptInviteForm.reset();
+      setPendingInviteToken("");
       setInviteToken("");
       await refreshHouseholds(payload.household_id || "");
       hideEditors();
@@ -2706,7 +2725,8 @@ window.addEventListener("load", async () => {
     const mode = (query.get("mode") || "").trim().toLowerCase();
     const token = (query.get("token") || "").trim();
     if (mode === "accept-invite" && token) {
-      window.location.href = `/auth?mode=accept-invite&token=${encodeURIComponent(token)}`;
+      setPendingInviteToken(token);
+      window.location.href = "/auth";
     } else {
       window.location.href = "/auth";
     }
