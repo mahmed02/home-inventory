@@ -1,13 +1,9 @@
 const AUTH_TOKEN_STORAGE_KEY = "home_inventory_auth_token";
 const AUTH_USER_STORAGE_KEY = "home_inventory_auth_user";
-const ACTIVE_HOUSEHOLD_STORAGE_KEY = "home_inventory_active_household_id";
 
 const landingAuthBadgeEl = document.getElementById("landingAuthBadge");
 const landingSignInLinkEl = document.getElementById("landingSignInLink");
 const landingOpenInventoryLinkEl = document.getElementById("landingOpenInventoryLink");
-const landingLogoutBtnEl = document.getElementById("landingLogoutBtn");
-const landingHeroSignInLinkEl = document.getElementById("landingHeroSignInLink");
-const landingHeroCreateAccountLinkEl = document.getElementById("landingHeroCreateAccountLink");
 const landingHeroInventoryLinkEl = document.getElementById("landingHeroInventoryLink");
 const landingStatusEl = document.getElementById("landingStatus");
 
@@ -34,7 +30,6 @@ function readStoredSession() {
 function clearStoredSession() {
   localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
   localStorage.removeItem(AUTH_USER_STORAGE_KEY);
-  localStorage.removeItem(ACTIVE_HOUSEHOLD_STORAGE_KEY);
 }
 
 function applySignedInUi(user) {
@@ -46,15 +41,6 @@ function applySignedInUi(user) {
   }
   if (landingOpenInventoryLinkEl) {
     landingOpenInventoryLinkEl.hidden = false;
-  }
-  if (landingLogoutBtnEl) {
-    landingLogoutBtnEl.hidden = false;
-  }
-  if (landingHeroSignInLinkEl) {
-    landingHeroSignInLinkEl.hidden = true;
-  }
-  if (landingHeroCreateAccountLinkEl) {
-    landingHeroCreateAccountLinkEl.hidden = true;
   }
   if (landingHeroInventoryLinkEl) {
     landingHeroInventoryLinkEl.hidden = false;
@@ -71,42 +57,9 @@ function applySignedOutUi() {
   if (landingOpenInventoryLinkEl) {
     landingOpenInventoryLinkEl.hidden = true;
   }
-  if (landingLogoutBtnEl) {
-    landingLogoutBtnEl.hidden = true;
-  }
-  if (landingHeroSignInLinkEl) {
-    landingHeroSignInLinkEl.hidden = false;
-  }
-  if (landingHeroCreateAccountLinkEl) {
-    landingHeroCreateAccountLinkEl.hidden = false;
-  }
   if (landingHeroInventoryLinkEl) {
     landingHeroInventoryLinkEl.hidden = true;
   }
-}
-
-async function handleLandingLogout() {
-  const { token } = readStoredSession();
-  const headers = {
-    "Content-Type": "application/json",
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  try {
-    await fetch("/auth/logout", {
-      method: "POST",
-      headers,
-      credentials: "same-origin",
-    });
-  } catch {
-    // Ignore logout failure and clear local session anyway.
-  }
-
-  clearStoredSession();
-  applySignedOutUi();
-  setStatus("Signed out.");
 }
 
 async function fetchMe(token) {
@@ -157,9 +110,3 @@ window.addEventListener("load", async () => {
     setStatus(hadStoredSession ? "Session expired. Sign in again." : "Ready.");
   }
 });
-
-if (landingLogoutBtnEl) {
-  landingLogoutBtnEl.addEventListener("click", () => {
-    void handleLandingLogout();
-  });
-}

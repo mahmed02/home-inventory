@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-app-route="household">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -102,8 +102,8 @@
                   <form id="forgotPasswordForm" class="stack auth-card">
                     <h3>Forgot Password</h3>
                     <input id="forgotEmail" type="email" placeholder="Email" required />
-                    <button type="submit">Send Reset Email</button>
-                    <p class="hint">If that account exists, a reset link will be emailed.</p>
+                    <button type="submit">Generate Reset Token</button>
+                    <p class="hint">Token is returned directly for now (email delivery not yet wired).</p>
                   </form>
 
                   <form id="resetPasswordForm" class="stack auth-card">
@@ -180,8 +180,9 @@
                   <option value="editor">Editor</option>
                   <option value="owner">Owner</option>
                 </select>
-                <button id="inviteMemberBtn" type="submit">Send Invite Email</button>
+                <button id="inviteMemberBtn" type="submit">Send Invite</button>
                 <p id="inviteTokenHint" class="hint"></p>
+                <button id="copyInviteTokenBtn" type="button" hidden>Copy Invite Token</button>
               </form>
 
               <form id="acceptInviteForm" class="stack household-invite">
