@@ -28,7 +28,26 @@ app.use(requireBasicAuth);
 app.use(attachUserSession);
 app.use(healthRouter);
 app.use(authRouter);
-app.use(express.static(publicDir, { index: false }));
+
+app.get("/index.html", (_req, res) => {
+  res.redirect(301, "/");
+});
+
+app.get("/landing.html", (_req, res) => {
+  res.redirect(301, "/");
+});
+
+app.get("/auth.html", (_req, res) => {
+  res.redirect(301, "/auth");
+});
+
+app.get("/inventory.html", (_req, res) => {
+  res.redirect(301, "/inventory");
+});
+
+app.get("/manage-household.html", (_req, res) => {
+  res.redirect(301, "/manage-household");
+});
 
 app.get("/", (_req, res) => {
   res.sendFile(path.join(publicDir, "landing.html"));
@@ -45,6 +64,8 @@ app.get("/inventory", (_req, res) => {
 app.get("/manage-household", (_req, res) => {
   res.sendFile(path.join(publicDir, "manage-household.html"));
 });
+
+app.use(express.static(publicDir, { index: false }));
 
 app.use(requireUserSession);
 app.use(householdsRouter);
