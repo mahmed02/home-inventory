@@ -102,8 +102,8 @@
                   <form id="forgotPasswordForm" class="stack auth-card">
                     <h3>Forgot Password</h3>
                     <input id="forgotEmail" type="email" placeholder="Email" required />
-                    <button type="submit">Generate Reset Token</button>
-                    <p class="hint">Token is returned directly for now (email delivery not yet wired).</p>
+                    <button type="submit">Send Reset Email</button>
+                    <p class="hint">If that account exists, a reset link will be emailed.</p>
                   </form>
 
                   <form id="resetPasswordForm" class="stack auth-card">
@@ -180,7 +180,7 @@
                   <option value="editor">Editor</option>
                   <option value="owner">Owner</option>
                 </select>
-                <button id="inviteMemberBtn" type="submit">Send Invite</button>
+                <button id="inviteMemberBtn" type="submit">Send Invite Email</button>
                 <p id="inviteTokenHint" class="hint"></p>
                 <button id="copyInviteTokenBtn" type="button" hidden>Copy Invite Token</button>
               </form>
@@ -244,7 +244,6 @@
               <button id="openCreateActionsBtn" class="plus-btn" title="Create">+</button>
               <button id="openEditBtn" disabled>Edit Selected</button>
               <button id="refreshTreeBtn">Refresh Tree</button>
-              <button id="seedBtn">Seed Demo Data</button>
             </div>
           </div>
           <p id="selectionHint" class="hint">Select a location or item in the tree to edit.</p>

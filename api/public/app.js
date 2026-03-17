@@ -63,7 +63,6 @@ const treeViewEl = document.getElementById("treeView");
 const treeTextEl = document.getElementById("treeText");
 const treeMetaEl = document.getElementById("treeMeta");
 const refreshTreeBtn = document.getElementById("refreshTreeBtn");
-const seedBtn = document.getElementById("seedBtn");
 const openCreateActionsBtn = document.getElementById("openCreateActionsBtn");
 const openEditBtn = document.getElementById("openEditBtn");
 const selectionHintEl = document.getElementById("selectionHint");
@@ -266,6 +265,8 @@ function setAppView(view) {
 
 function setTopNavigationState() {
   const isSignedIn = Boolean(authUser);
+  const isWorkspaceRoute =
+    window.location.pathname === "/inventory" || window.location.pathname === "/manage-household";
 
   if (globalAuthBadgeEl) {
     globalAuthBadgeEl.textContent = isSignedIn
@@ -274,13 +275,19 @@ function setTopNavigationState() {
   }
 
   if (goToAuthBtn) {
-    goToAuthBtn.hidden = isSignedIn;
+    goToAuthBtn.hidden = isSignedIn || isWorkspaceRoute;
   }
   if (goToInventoryBtn) {
-    goToInventoryBtn.hidden = !isSignedIn;
+    goToInventoryBtn.hidden = !isSignedIn || isWorkspaceRoute;
   }
   if (logoutTopBtn) {
     logoutTopBtn.hidden = !isSignedIn;
+  }
+  if (startLoginBtn) {
+    startLoginBtn.hidden = isSignedIn;
+  }
+  if (startSignupBtn) {
+    startSignupBtn.hidden = isSignedIn;
   }
   if (startInventoryBtn) {
     startInventoryBtn.hidden = !isSignedIn;
@@ -960,7 +967,6 @@ function updateActionState() {
   const readOnly = isViewerRoleActive();
   openCreateActionsBtn.disabled = readOnly;
   openEditBtn.disabled = !hasSelection || readOnly;
-  seedBtn.disabled = readOnly;
 
   if (selectedLocationId) {
     const location = locationMap.get(selectedLocationId);
@@ -2501,21 +2507,6 @@ householdInvitationsEl.addEventListener("click", async (event) => {
     setStatus(error.message);
   } finally {
     revokeBtn.disabled = false;
-  }
-});
-
-seedBtn.addEventListener("click", async () => {
-  seedBtn.disabled = true;
-  setStatus("Seeding demo data...");
-  try {
-    await fetchJson("/dev/seed", { method: "POST" });
-    hideEditors();
-    await refreshAll();
-    setStatus("Seed complete.");
-  } catch (error) {
-    setStatus(error.message);
-  } finally {
-    seedBtn.disabled = false;
   }
 });
 
