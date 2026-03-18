@@ -1353,6 +1353,53 @@ test("GET /api/items/lookup maps count intent and returns count summary", async 
   assert.ok(payload.confidence >= 0 && payload.confidence <= 1);
 });
 
+test("GET /api/items/lookup maps existence intent and returns a yes/no style answer", async () => {
+  const house = await request("/locations", {
+    method: "POST",
+    body: { name: "House", code: "HEX1", type: "house", parent_id: null },
+  });
+  assert.equal(house.status, 201);
+  const houseId = (house.json as { id: string }).id;
+
+  const pantry = await request("/locations", {
+    method: "POST",
+    body: { name: "Pantry", code: "PEX1", type: "room", parent_id: houseId },
+  });
+  assert.equal(pantry.status, 201);
+  const pantryId = (pantry.json as { id: string }).id;
+
+  const eggs = await request("/items", {
+    method: "POST",
+    body: {
+      name: "Egg Box",
+      keywords: ["egg", "eggs", "carton"],
+      quantity: 4,
+      location_id: pantryId,
+    },
+  });
+  assert.equal(eggs.status, 201);
+
+  const lookup = await request("/api/items/lookup?q=do%20i%20have%20egg%20box");
+  assert.equal(lookup.status, 200);
+
+  const payload = lookup.json as {
+    intent: string;
+    fallback: boolean;
+    match_count: number;
+    item: string | null;
+    quantity?: number | null;
+    answer: string;
+  };
+
+  assert.equal(payload.intent, "check_item_existence");
+  assert.equal(payload.fallback, false);
+  assert.equal(payload.item, "Egg Box");
+  assert.equal(payload.match_count, 1);
+  assert.equal(payload.quantity ?? null, 4);
+  assert.match(payload.answer, /^Yes,/i);
+  assert.match(payload.answer, /Quantity: 4/i);
+});
+
 test("GET /api/items/lookup handles unsupported action requests safely", async () => {
   const lookup = await request("/api/items/lookup?q=move%20the%20drill%20to%20attic");
   assert.equal(lookup.status, 200);
