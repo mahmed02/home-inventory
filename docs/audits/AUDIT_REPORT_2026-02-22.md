@@ -40,7 +40,7 @@ This audit covered:
 
 ### 3.1 Roadmap status
 
-From `ROADMAP.md`:
+From `docs/planning/ROADMAP.md`:
 
 - Completed tasks: 68
 - Open tasks: 28
@@ -232,7 +232,7 @@ Recommendation:
 
 Examples:
 
-- `PROJECT_GUIDE.md` “Current Gaps” still lists already-completed items (direct upload, breadcrumbs, expanded tests): `/Users/mohammedahmed/MyProjects/home_inventory/PROJECT_GUIDE.md:288-295`
+- `PROJECT_GUIDE.md` “Current Gaps” still lists already-completed items (direct upload, breadcrumbs, expanded tests): `/Users/mohammedahmed/MyProjects/home_inventory/docs/guides/PROJECT_GUIDE.md:288-295`
 - `api/README.md` “Current Migration Set (Tickets 1-4)” omits `0005` even though migration exists.
 
 Recommendation:
@@ -276,7 +276,7 @@ Recommendation:
 
 ### Before public HTTPS exposure
 
-1. Complete remaining MVP gap items in `ROADMAP.md`.
+1. Complete remaining MVP gap items in `docs/planning/ROADMAP.md`.
 2. Run staging restore drill and document evidence.
 3. Re-run full audit after auth and XSS remediations.
 

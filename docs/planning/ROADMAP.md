@@ -1,6 +1,6 @@
 # Home Inventory System — Execution Roadmap
 
-Last updated: **2026-02-27**
+Last updated: **2026-03-18**
 
 This roadmap tracks:
 1. Completed capabilities
@@ -121,6 +121,8 @@ This roadmap tracks:
 - [x] Chat-style UI experience
 - [x] Siri lookup aligned to conversational answer path
 - [x] Safer fallback behavior and unsupported-action guardrails
+- [x] Lookup flow refactored into parser -> resolver -> handler modules
+- [x] Shared read-intent contract added for location / existence / count / quantity requests
 
 ### Phase 8.5 — Inventory Quantity Tracking + Siri Actions
 - [x] Optional quantity field on items with non-negative validation
@@ -147,7 +149,7 @@ This roadmap tracks:
 
 ## 3) Post-MVP Backlog
 
-Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICKETS.md`
+Execution tickets: `./POST_MVP_TICKETS.md`
 
 ### Phase 6.7 — Auth Hardening + Verification
 - [x] Email verification flow (schema + verification endpoints)
@@ -162,9 +164,11 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 - [x] Contract tests + UI support for quantity fields
 
 ### Phase 8.6 — Optional LLM Query Normalizer (Paused)
-- [ ] Preserve deterministic tool routes as the source of truth for reads/writes
-- [ ] Add optional lightweight LLM intent/query normalizer in front of tool routes
-- [ ] Add accuracy + safety regression set for paraphrase handling and fallback behavior
+- [ ] Preserve deterministic parser + handler execution as the source of truth for reads/writes
+- [ ] Add schema-validated normalized intent contract (`intent`, `subject`, `amount`, `location_hint`, `confidence`)
+- [ ] Add deterministic-first intent orchestrator with LLM fallback only on weak/ambiguous parses
+- [ ] Keep LLM role limited to normalization; never direct execution or mutation
+- [ ] Add accuracy + safety regression set for paraphrase handling, unsupported requests, and fallback behavior
 - [ ] Gate rollout behind feature flag with explicit kill switch
 - [ ] Revisit after current UX + mobile milestones
 
@@ -221,8 +225,10 @@ Execution tickets: `/Users/mohammedahmed/MyProjects/home_inventory/POST_MVP_TICK
 
 ### Paused (Do Not Start Yet)
 1. `8.6-01` Deterministic tool-route baseline for LLM normalization
-2. `8.6-02` Feature-flagged lightweight LLM normalizer + response composer
-3. `8.6-03` NLI accuracy/safety evaluation harness
+2. `8.6-02` Schema-validated normalized intent contract
+3. `8.6-03` Deterministic-first intent orchestrator + LLM fallback
+4. `8.6-04` Feature-flagged lightweight LLM normalizer
+5. `8.6-05` NLI accuracy/safety evaluation harness
 
 ---
 

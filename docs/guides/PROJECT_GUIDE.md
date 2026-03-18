@@ -40,10 +40,12 @@ Local infrastructure:
 
 At repo root:
 - `api/` -> backend + frontend static files
+- `docs/` -> project documentation index + categorized runbooks/specs
 - `docker-compose.yml` -> local Postgres container
 - `Makefile` -> helper commands
-- `ROADMAP.md` -> execution plan/status
-- `PROJECT_GUIDE.md` -> this document
+- `docs/README.md` -> documentation index
+- `docs/planning/ROADMAP.md` -> execution plan/status
+- `docs/guides/PROJECT_GUIDE.md` -> this document
 
 Inside `api/`:
 - `src/server.ts` -> starts server
@@ -154,12 +156,14 @@ What it can do:
 - view interactive nested tree
 - edit/delete selected location
 - edit/delete selected item
-- seed demo data from button
 - show text tree representation
 - display image thumbnails from `image_url`
 
 Files:
-- `api/public/index.html`
+- `api/public/landing.html`
+- `api/public/auth.html`
+- `api/public/inventory.html`
+- `api/public/manage-household.html`
 - `api/public/app.js`
 - `api/public/styles.css`
 
@@ -274,11 +278,11 @@ Direct S3 upload integration is a next step.
 ## 13) How to Extend the Project Safely
 
 When adding a feature:
-1. update `ROADMAP.md`
+1. update `docs/planning/ROADMAP.md`
 2. implement DB/API/UI changes
 3. add/extend tests in `api/src/test/contracts.test.ts`
 4. run `typecheck`, `lint`, `test`
-5. update this guide (`PROJECT_GUIDE.md`)
+5. update this guide (`docs/guides/PROJECT_GUIDE.md`)
 
 Good rule:
 - every new API behavior should be backed by at least one contract test

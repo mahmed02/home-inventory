@@ -123,12 +123,10 @@ Email delivery modes:
    - `GET /api/items/lookup?q=...`
 7. Set `ENABLE_DEV_ROUTES=false` in staging/production.
 
-For the full step-by-step runbook, use:
-- `/Users/mohammedahmed/MyProjects/home_inventory/DEPLOY.md`
-- CI/CD setup (GitHub Actions -> AWS SSM), use:
-- `/Users/mohammedahmed/MyProjects/home_inventory/CICD.md`
-- HTTPS staging and cutover rehearsal checklist:
-- `/Users/mohammedahmed/MyProjects/home_inventory/STAGING_HTTPS_RUNBOOK.md`
+For CI/CD setup (GitHub Actions -> AWS SSM), use:
+- `../docs/operations/CICD.md`
+
+Project-level operational docs live under `../docs/operations/`.
 
 ## Endpoints (Current)
 
