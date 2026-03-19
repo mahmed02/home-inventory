@@ -172,6 +172,7 @@ Execution tickets: `./POST_MVP_TICKETS.md`
 - [ ] Add deterministic-first intent orchestrator with optional LLM fallback only on weak/ambiguous parses
 - [ ] Keep LLM role limited to normalization; never direct execution or mutation
 - [ ] Gate rollout behind feature flag with explicit kill switch
+- [ ] Build a small regression set from real search failures and tune the lexical-to-semantic fallback threshold.
 
 ### Phase 9 — Movement History
 - [x] `movement_history` table
