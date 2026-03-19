@@ -1,13 +1,13 @@
 import { InventoryScope, canWriteInventory, inventoryScopeSql } from "../auth/inventoryScope";
 import { pool } from "../db/pool";
 import { roundConfidence, scoreConfidence } from "./intentParser";
-import { resolveItemCandidates } from "./itemResolver";
 import {
   ambiguousItemResponse,
   itemNotFoundResponse,
   quantityConfirmationResponse,
   readOnlyQuantityResponse,
 } from "./lookupResponses";
+import { resolveReadItemLookup, resolveSingleReadItem } from "./readItemResolver";
 import {
   InventoryAssistantOptions,
   InventoryAssistantResponse,
@@ -74,24 +74,23 @@ export async function mutateItemQuantityIntent(
     return readOnlyQuantityResponse(parsed);
   }
 
-  const resolution = await resolveItemCandidates({
+  const lookup = await resolveReadItemLookup({
     scope,
-    subject: parsed.subject,
+    subject: parsed.normalizedSubject,
+    locationHint: parsed.locationHint,
     limit: 3,
   });
-  if (!resolution.top) {
+  const resolution = resolveSingleReadItem(lookup);
+
+  if (resolution.status === "none") {
     return itemNotFoundResponse(parsed, operation);
   }
 
-  if (resolution.ambiguous) {
-    return ambiguousItemResponse(
-      parsed,
-      resolution.candidates.map((row) => row.name),
-      operation
-    );
+  if (resolution.status === "ambiguous") {
+    return ambiguousItemResponse(parsed, resolution.names, operation);
   }
 
-  const top = resolution.top;
+  const top = resolution.item;
   const amount = parsed.amount ?? (operation === "set" ? 0 : 1);
   const allowQuantityMutations = options.allowQuantityMutations ?? true;
   if (!allowQuantityMutations) {
@@ -105,7 +104,7 @@ export async function mutateItemQuantityIntent(
     const scopeKey = idempotencyScopeKey(scope);
     const requestFingerprint = quantityRequestFingerprint({
       intent: parsed.intent,
-      subject: parsed.subject,
+      subject: parsed.normalizedSubject,
       operation,
       amount,
       itemId: top.id,

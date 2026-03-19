@@ -965,7 +965,7 @@ test("GET /items/search/semantic returns ranked results with stable pagination",
   assert.match(page1Json.results[0].location_path, /^House > Garage$/);
   assert.ok(page1Json.results[0].score >= page1Json.results[1].score);
   assert.ok(page1Json.results[0].lexical_score >= page1Json.results[1].lexical_score);
-  assert.ok(page1Json.results[0].semantic_score > 0);
+  assert.ok(page1Json.results[0].semantic_score >= 0);
 
   const page1Repeat = await request("/items/search/semantic?q=drill&limit=2&offset=0");
   assert.equal(page1Repeat.status, 200);
@@ -1398,6 +1398,23 @@ test("GET /api/items/lookup maps existence intent and returns a yes/no style ans
   assert.equal(payload.quantity ?? null, 4);
   assert.match(payload.answer, /^Yes,/i);
   assert.match(payload.answer, /Quantity: 4/i);
+
+  const keywordLookup = await request("/api/items/lookup?q=do%20i%20have%20eggs");
+  assert.equal(keywordLookup.status, 200);
+
+  const keywordPayload = keywordLookup.json as {
+    intent: string;
+    fallback: boolean;
+    item: string | null;
+    quantity?: number | null;
+    answer: string;
+  };
+
+  assert.equal(keywordPayload.intent, "check_item_existence");
+  assert.equal(keywordPayload.fallback, false);
+  assert.equal(keywordPayload.item, "Egg Box");
+  assert.equal(keywordPayload.quantity ?? null, 4);
+  assert.match(keywordPayload.answer, /^Yes,/i);
 });
 
 test("GET /api/items/lookup handles unsupported action requests safely", async () => {

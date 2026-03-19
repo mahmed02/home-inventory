@@ -18,9 +18,12 @@ Ticket status values:
 
 ## Active Queue (Current)
 
-1. `10.5-03` Frontend Onboarding + Empty States (`todo`) — depends on `10.5-02`
-2. `10.5-04` Frontend Accessibility + Keyboard Navigation (`todo`) — depends on `10.5-02`
-3. `11-02` Shared API Client + Auth Integration (`todo`) — depends on `11-01`
+1. `8.6-02` Deterministic Query Normalizer + Subject Canonicalization (`in_progress`) — depends on `8.6-01`
+2. `8.6-03` Real-Query Regression Set + Lookup Evaluation (`todo`) — depends on `8.6-02`
+3. `8.6-04` Pinecone Retrieval Tuning + Query/Result Cache Strategy (`todo`) — depends on `8.6-02`
+4. `10.5-03` Frontend Onboarding + Empty States (`todo`) — depends on `10.5-02`
+5. `10.5-04` Frontend Accessibility + Keyboard Navigation (`todo`) — depends on `10.5-02`
+6. `11-02` Shared API Client + Auth Integration (`todo`) — depends on `11-01`
 
 ## Security Queue (Auth Hardening)
 
@@ -30,11 +33,11 @@ Ticket status values:
 4. `6.7-04` Auth Endpoint Rate Limits + Abuse Controls (`done`) — depends on `6.5-03`
 5. `6.7-05` Session Transport Hardening (HttpOnly cookie mode) (`done`) — depends on `6.5-03`, `6.7-04`
 
-## Paused Queue (Do Not Start Yet)
+## Deferred Queue (LLM-Specific)
 
-1. `8.6-01` Deterministic Tool Route Baseline (`blocked`) — paused by product decision until current UX + mobile priorities are done
-2. `8.6-02` Lightweight LLM Query Normalizer + Response Composer (`blocked`) — depends on `8.6-01`
-3. `8.6-03` NLI Evaluation Harness + Guardrails (`blocked`) — depends on `8.6-01`, `8.6-02`
+1. `8.6-06` Deterministic-First Intent Orchestrator + Optional LLM Fallback (`blocked`) — depends on `8.6-05`
+2. `8.6-07` Lightweight LLM Query Normalizer Rollout (`blocked`) — depends on `8.6-06`
+3. `8.6-08` NLI Evaluation Harness + Guardrails (`blocked`) — depends on `8.6-05`, `8.6-06`
 
 ---
 
@@ -391,40 +394,87 @@ Status: `done`
 
 ---
 
-## Phase 8.6 — Optional LLM Query Normalizer (Paused)
+## Phase 8.6 — Lookup Normalization + Optional LLM Fallback
 
 ## 8.6-01) Deterministic Tool Route Baseline
-Status: `blocked`
+Status: `done`
 - Scope:
   - Finalize deterministic read/write route contracts as canonical execution layer.
   - Define normalized query contract for existence/count/location/related-item retrieval.
 - Acceptance:
   - Tool route behavior is stable and covered by regression tests for core retrieval intents.
-- Blocker:
-  - Paused by product decision on 2026-02-27 until active UX/mobile queue is complete.
+- Notes:
+  - Completed via parser -> resolver -> handler refactor and shared read-intent contract.
 
-## 8.6-02) Lightweight LLM Query Normalizer + Response Composer
-Status: `blocked`
+## 8.6-02) Deterministic Query Normalizer + Subject Canonicalization
+Status: `in_progress`
 - Depends on: `8.6-01`
 - Scope:
-  - Add optional LLM normalization layer that maps paraphrased user requests to deterministic tool-route calls.
+  - Add deterministic subject normalization before retrieval.
+  - Support common plural/singular cleanup, filler stripping, and location hint extraction.
+- Acceptance:
+  - Queries like `drills`, `batteries`, and `eggs in the fridge` normalize into cleaner retrieval inputs.
+  - Item resolution can use extracted location hints without changing write safety rules.
+
+## 8.6-03) Real-Query Regression Set + Lookup Evaluation
+Status: `todo`
+- Depends on: `8.6-02`
+- Scope:
+  - Collect failed or weak real-world lookup queries from staging/product use.
+  - Add deterministic regression coverage for existence/count/location/quantity prompts.
+- Acceptance:
+  - Regression suite catches phrase regressions before search/NLI changes ship.
+  - Team can compare lookup quality changes against a stable baseline.
+
+## 8.6-04) Pinecone Retrieval Tuning + Query/Result Cache Strategy
+Status: `todo`
+- Depends on: `8.6-02`
+- Scope:
+  - Improve Pinecone-first retrieval quality without introducing hardcoded per-item alias maps.
+  - Evaluate and tighten local/server-side cache strategy for repeated semantic lookups.
+- Acceptance:
+  - Retrieval quality improves for paraphrased item names through vector search and deterministic normalization alone.
+  - Cache strategy improves repeated lookup latency without becoming a second full vector database to maintain.
+
+## 8.6-05) Schema-Validated Normalized Intent Contract
+Status: `todo`
+- Depends on: `8.6-02`
+- Scope:
+  - Define normalized request contract for future LLM fallback (`intent`, `subject`, `amount`, `location_hint`, `confidence`).
+  - Keep deterministic handlers as the execution source of truth.
+- Acceptance:
+  - Contract is explicit, validated, and reusable by both deterministic and future LLM normalization paths.
+  - Unsupported/unknown requests can be represented safely without mutation risk.
+
+## 8.6-06) Deterministic-First Intent Orchestrator + Optional LLM Fallback
+Status: `blocked`
+- Depends on: `8.6-05`
+- Scope:
+  - Add orchestrator that prefers deterministic parsing and only falls back to LLM normalization on weak/ambiguous requests.
   - Keep all writes routed through existing deterministic/confirmation/idempotency controls.
 - Acceptance:
-  - Feature-flagged rollout with deterministic fallback when LLM confidence is low or provider fails.
-  - Existing Siri/chat behavior remains available when flag is off.
-- Blocker:
-  - Paused by product decision on 2026-02-27 until active UX/mobile queue is complete.
+  - Deterministic behavior remains the default path.
+  - LLM fallback is limited to normalization and can be disabled cleanly.
 
-## 8.6-03) NLI Evaluation Harness + Safety Guardrails
+## 8.6-07) Lightweight LLM Query Normalizer Rollout
 Status: `blocked`
-- Depends on: `8.6-01`, `8.6-02`
+- Depends on: `8.6-06`
 - Scope:
-  - Build eval set for paraphrase coverage (existence/count/location/related-item queries).
-  - Add confidence/fallback thresholds and regression gate for unsafe or low-confidence mappings.
+  - Add feature-flagged LLM normalization layer and rollout controls.
+  - Add explicit kill switch and provider-failure fallback behavior.
 - Acceptance:
-  - CI check reports accuracy/fallback metrics and blocks regressions before rollout.
-- Blocker:
-  - Paused by product decision on 2026-02-27 until active UX/mobile queue is complete.
+  - Feature can be enabled/disabled without code changes.
+  - Existing Siri/chat lookup remains functional when the LLM path is disabled.
+
+## 8.6-08) NLI Evaluation Harness + Safety Guardrails
+Status: `blocked`
+- Depends on: `8.6-05`, `8.6-06`
+- Scope:
+  - Build benchmark prompts covering paraphrase intent mapping, false-positive suppression, and unsupported-action handling.
+  - Measure deterministic-only vs optional LLM-normalized behavior.
+- Acceptance:
+  - Regression suite measures hit-rate, fallback-rate, and safety outcomes before and after LLM rollout.
+  - Unsupported or ambiguous requests remain safely blocked.
 
 ---
 

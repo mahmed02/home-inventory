@@ -121,3 +121,7 @@ function resolveSemanticTerms(value: string): SemanticTerms {
 export function semanticQueryTerms(input: string): string[] {
   return resolveSemanticTerms(input).expanded;
 }
+
+export function lexicalQueryTerms(input: string): string[] {
+  return resolveSemanticTerms(input).base;
+}

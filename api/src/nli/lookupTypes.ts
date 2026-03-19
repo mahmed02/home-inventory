@@ -12,6 +12,8 @@ export type InventoryIntent =
 export type ParsedInventoryIntent = {
   intent: InventoryIntent;
   subject: string;
+  normalizedSubject: string;
+  locationHint: string | null;
   confidence: number;
   rawQuery: string;
   normalizedQuery: string;

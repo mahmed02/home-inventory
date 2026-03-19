@@ -6,6 +6,8 @@ test("parseInventoryIntent maps item lookup phrases", () => {
   const parsed = parseInventoryIntent("Where is my drill?");
   assert.equal(parsed.intent, "find_item");
   assert.equal(parsed.subject, "drill");
+  assert.equal(parsed.normalizedSubject, "drill");
+  assert.equal(parsed.locationHint, null);
   assert.equal(parsed.amount, null);
 });
 
@@ -19,16 +21,19 @@ test("parseInventoryIntent maps count and existence phrases to the right read in
   const countParsed = parseInventoryIntent("how many drills do I have");
   assert.equal(countParsed.intent, "count_items");
   assert.equal(countParsed.subject, "drills");
+  assert.equal(countParsed.normalizedSubject, "drill");
 
   const haveParsed = parseInventoryIntent("do I have eggs");
   assert.equal(haveParsed.intent, "check_item_existence");
   assert.equal(haveParsed.subject, "eggs");
+  assert.equal(haveParsed.normalizedSubject, "egg");
 });
 
 test("parseInventoryIntent maps quantity read phrases", () => {
   const parsed = parseInventoryIntent("get count of aa battery pack");
   assert.equal(parsed.intent, "get_item_quantity");
   assert.equal(parsed.subject, "aa battery pack");
+  assert.equal(parsed.normalizedSubject, "aa battery pack");
   assert.equal(parsed.amount, null);
 });
 
@@ -47,6 +52,25 @@ test("parseInventoryIntent maps quantity mutation phrases", () => {
   assert.equal(setParsed.intent, "set_item_quantity");
   assert.equal(setParsed.subject, "aa battery pack");
   assert.equal(setParsed.amount, 9);
+});
+
+test("parseInventoryIntent extracts location hints and broader existence phrasing", () => {
+  const existenceParsed = parseInventoryIntent("any eggs left in the fridge");
+  assert.equal(existenceParsed.intent, "check_item_existence");
+  assert.equal(existenceParsed.subject, "eggs left in the fridge");
+  assert.equal(existenceParsed.normalizedSubject, "egg");
+  assert.equal(existenceParsed.locationHint, "fridge");
+
+  const findParsed = parseInventoryIntent("where is my drill in the garage");
+  assert.equal(findParsed.intent, "find_item");
+  assert.equal(findParsed.normalizedSubject, "drill");
+  assert.equal(findParsed.locationHint, "garage");
+});
+
+test("parseInventoryIntent treats 'how much' as quantity lookup phrasing", () => {
+  const parsed = parseInventoryIntent("how much batteries do i have");
+  assert.equal(parsed.intent, "get_item_quantity");
+  assert.equal(parsed.normalizedSubject, "battery");
 });
 
 test("parseInventoryIntent maps unsupported write requests safely", () => {

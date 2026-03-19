@@ -30,7 +30,8 @@ export async function findItemIntent(
 ): Promise<InventoryAssistantResponse> {
   const lookup = await resolveReadItemLookup({
     scope,
-    subject: parsed.subject,
+    subject: parsed.normalizedSubject,
+    locationHint: parsed.locationHint,
     limit: 3,
   });
   const resolution = resolveSingleReadItem(lookup);
@@ -69,7 +70,8 @@ export async function getItemQuantityIntent(
 ): Promise<InventoryAssistantResponse> {
   const lookup = await resolveReadItemLookup({
     scope,
-    subject: parsed.subject,
+    subject: parsed.normalizedSubject,
+    locationHint: parsed.locationHint,
     limit: 3,
   });
   const resolution = resolveSingleReadItem(lookup);
@@ -114,7 +116,8 @@ export async function checkItemExistenceIntent(
 ): Promise<InventoryAssistantResponse> {
   const lookup = await resolveReadItemLookup({
     scope,
-    subject: parsed.subject,
+    subject: parsed.normalizedSubject,
+    locationHint: parsed.locationHint,
     limit: 10,
   });
 
@@ -165,7 +168,8 @@ export async function countItemsIntent(
 ): Promise<InventoryAssistantResponse> {
   const lookup = await resolveReadItemLookup({
     scope,
-    subject: parsed.subject,
+    subject: parsed.normalizedSubject,
+    locationHint: parsed.locationHint,
     limit: 10,
   });
 

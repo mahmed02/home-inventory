@@ -1,4 +1,5 @@
 import { InventoryIntent, ParsedInventoryIntent } from "./lookupTypes";
+import { normalizeLookupSubject } from "./queryNormalizer";
 
 export function roundConfidence(value: number): number {
   const clamped = Math.max(0, Math.min(1, value));
@@ -43,6 +44,28 @@ function parseNonNegativeInt(raw: string | undefined): number | null {
   return parsed;
 }
 
+function buildParsedIntent(params: {
+  intent: InventoryIntent;
+  subject: string;
+  confidence: number;
+  rawQuery: string;
+  normalizedQuery: string;
+  amount: number | null;
+}): ParsedInventoryIntent {
+  const subject = params.subject || params.normalizedQuery;
+  const normalized = normalizeLookupSubject(subject);
+  return {
+    intent: params.intent,
+    subject,
+    normalizedSubject: normalized.normalizedSubject,
+    locationHint: normalized.locationHint,
+    confidence: params.confidence,
+    rawQuery: params.rawQuery,
+    normalizedQuery: params.normalizedQuery,
+    amount: params.amount,
+  };
+}
+
 export function parseInventoryIntent(query: string): ParsedInventoryIntent {
   const normalizedQuery = normalizePunctuation(query).toLowerCase();
 
@@ -54,14 +77,14 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
     const amount = parseNonNegativeInt(setQuantityMatch[2]);
     const subject = cleanupSubject(setQuantityMatch[1]);
     if (amount !== null && subject) {
-      return {
+      return buildParsedIntent({
         intent: "set_item_quantity",
         subject,
         confidence: 0.95,
         rawQuery: query,
         normalizedQuery,
         amount,
-      };
+      });
     }
   }
 
@@ -70,26 +93,26 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
     const explicitAmount = addQuantityMatch[1];
     const parsedAmount = parsePositiveInt(explicitAmount);
     if (explicitAmount && parsedAmount === null) {
-      return {
+      return buildParsedIntent({
         intent: "unsupported_action",
         subject: cleanupSubject(addQuantityMatch[2]) || normalizedQuery,
         confidence: 0.8,
         rawQuery: query,
         normalizedQuery,
         amount: null,
-      };
+      });
     }
     const amount = parsedAmount ?? 1;
     const subject = cleanupSubject(addQuantityMatch[2]);
     if (subject) {
-      return {
+      return buildParsedIntent({
         intent: "add_item_quantity",
         subject,
         confidence: 0.88,
         rawQuery: query,
         normalizedQuery,
         amount,
-      };
+      });
     }
   }
 
@@ -100,26 +123,26 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
     const explicitAmount = removeQuantityMatch[1];
     const parsedAmount = parsePositiveInt(explicitAmount);
     if (explicitAmount && parsedAmount === null) {
-      return {
+      return buildParsedIntent({
         intent: "unsupported_action",
         subject: cleanupSubject(removeQuantityMatch[2]) || normalizedQuery,
         confidence: 0.8,
         rawQuery: query,
         normalizedQuery,
         amount: null,
-      };
+      });
     }
     const amount = parsedAmount ?? 1;
     const subject = cleanupSubject(removeQuantityMatch[2]);
     if (subject) {
-      return {
+      return buildParsedIntent({
         intent: "remove_item_quantity",
         subject,
         confidence: 0.88,
         rawQuery: query,
         normalizedQuery,
         amount,
-      };
+      });
     }
   }
 
@@ -128,30 +151,31 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
     normalizedQuery.match(
       /^(?:what(?:'s| is)\s+(?:the\s+)?(?:count|quantity)\s+(?:of\s+)?)(.+)$/i
     ) ||
-    normalizedQuery.match(/^how many(?:\s+of)?\s+(?:my|our)\s+(.+?)(?:\s+do\s+i\s+have)?$/i);
+    normalizedQuery.match(/^how many(?:\s+of)?\s+(?:my|our)\s+(.+?)(?:\s+do\s+i\s+have)?$/i) ||
+    normalizedQuery.match(/^how much\s+(.+?)(?:\s+do\s+i\s+have)?$/i);
   if (getQuantityMatch) {
     const subject = cleanupSubject(getQuantityMatch[1]);
-    return {
+    return buildParsedIntent({
       intent: "get_item_quantity",
       subject: subject || normalizedQuery,
       confidence: 0.9,
       rawQuery: query,
       normalizedQuery,
       amount: null,
-    };
+    });
   }
 
   const unsupportedMatch = normalizedQuery.match(/^(move|delete|rename|update|edit)\s+(.+)$/i);
   if (unsupportedMatch) {
     const subject = cleanupSubject(unsupportedMatch[2]);
-    return {
+    return buildParsedIntent({
       intent: "unsupported_action",
       subject: subject || normalizedQuery,
       confidence: 0.96,
       rawQuery: query,
       normalizedQuery,
       amount: null,
-    };
+    });
   }
 
   const listLocationMatch = normalizedQuery.match(
@@ -159,14 +183,14 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
   );
   if (listLocationMatch) {
     const subject = cleanupSubject(listLocationMatch[1]);
-    return {
+    return buildParsedIntent({
       intent: "list_location",
       subject: subject || normalizedQuery,
       confidence: 0.92,
       rawQuery: query,
       normalizedQuery,
       amount: null,
-    };
+    });
   }
 
   const countMatch = normalizedQuery.match(
@@ -174,14 +198,14 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
   );
   if (countMatch) {
     const subject = cleanupSubject(countMatch[1]);
-    return {
+    return buildParsedIntent({
       intent: "count_items",
       subject: subject || normalizedQuery,
       confidence: 0.93,
       rawQuery: query,
       normalizedQuery,
       amount: null,
-    };
+    });
   }
 
   const whereMatch = normalizedQuery.match(
@@ -189,37 +213,41 @@ export function parseInventoryIntent(query: string): ParsedInventoryIntent {
   );
   if (whereMatch) {
     const subject = cleanupSubject(whereMatch[1]);
-    return {
+    return buildParsedIntent({
       intent: "find_item",
       subject: subject || normalizedQuery,
       confidence: 0.9,
       rawQuery: query,
       normalizedQuery,
       amount: null,
-    };
+    });
   }
 
-  const haveMatch = normalizedQuery.match(/^do\s+i\s+have\s+(.+)$/i);
+  const haveMatch =
+    normalizedQuery.match(/^do\s+i\s+have\s+(.+)$/i) ||
+    normalizedQuery.match(/^(?:any|got any)\s+(.+)$/i) ||
+    normalizedQuery.match(/^are\s+there\s+any\s+(.+)$/i) ||
+    normalizedQuery.match(/^is\s+there\s+(?:a|an|any)\s+(.+)$/i);
   if (haveMatch) {
     const subject = cleanupSubject(haveMatch[1]);
-    return {
+    return buildParsedIntent({
       intent: "check_item_existence",
       subject: subject || normalizedQuery,
       confidence: 0.82,
       rawQuery: query,
       normalizedQuery,
       amount: null,
-    };
+    });
   }
 
-  return {
+  return buildParsedIntent({
     intent: "find_item",
     subject: cleanupSubject(normalizedQuery) || normalizedQuery,
     confidence: 0.55,
     rawQuery: query,
     normalizedQuery,
     amount: null,
-  };
+  });
 }
 
 export function scoreConfidence(

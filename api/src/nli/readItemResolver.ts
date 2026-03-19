@@ -1,10 +1,45 @@
 import { InventoryScope } from "../auth/inventoryScope";
 import { resolveItemCandidates } from "./itemResolver";
-import { ReadItemLookup, SingleReadItemResolution } from "./lookupTypes";
+import { ReadItemLookup, ResolvedItemCandidate, SingleReadItemResolution } from "./lookupTypes";
+
+function hasAmbiguousTopMatch(candidates: ResolvedItemCandidate[]): boolean {
+  if (candidates.length < 2) {
+    return false;
+  }
+
+  const top = candidates[0];
+  const next = candidates[1];
+  if (top.name.toLowerCase() === next.name.toLowerCase()) {
+    return false;
+  }
+
+  return Math.abs(top.score - next.score) <= 0.08;
+}
+
+function applyLocationHint(
+  candidates: ResolvedItemCandidate[],
+  locationHint: string | null | undefined
+): ResolvedItemCandidate[] {
+  if (!locationHint) {
+    return candidates;
+  }
+
+  const normalizedHint = locationHint.trim().toLowerCase();
+  if (!normalizedHint) {
+    return candidates;
+  }
+
+  const hinted = candidates.filter((candidate) =>
+    candidate.location_path.toLowerCase().includes(normalizedHint)
+  );
+
+  return hinted.length > 0 ? hinted : candidates;
+}
 
 export async function resolveReadItemLookup(params: {
   scope: InventoryScope;
   subject: string;
+  locationHint?: string | null;
   limit?: number;
 }): Promise<ReadItemLookup> {
   const resolution = await resolveItemCandidates({
@@ -13,13 +48,15 @@ export async function resolveReadItemLookup(params: {
     limit: params.limit ?? 10,
   });
 
+  const candidates = applyLocationHint(resolution.candidates, params.locationHint);
+
   return {
     subject: resolution.subject,
-    candidates: resolution.candidates,
-    top: resolution.top,
-    match_count: resolution.match_count,
-    has_matches: resolution.match_count > 0 && resolution.top !== null,
-    ambiguous: resolution.ambiguous,
+    candidates,
+    top: candidates[0] ?? null,
+    match_count: candidates.length,
+    has_matches: candidates.length > 0,
+    ambiguous: hasAmbiguousTopMatch(candidates),
   };
 }
 

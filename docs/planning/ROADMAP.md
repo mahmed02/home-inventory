@@ -143,7 +143,7 @@ This roadmap tracks:
 
 ### MVP hardening status: **closed**
 - Core MVP + staging HTTPS + backups + photo uploads + multi-user household sharing are complete.
-- Current effort focus is now **Phase 10.5 UX and Phase 11 mobile**.
+- Current effort focus is now **Phase 8.6 lookup normalization, Phase 10.5 UX, and Phase 11 mobile**.
 
 ---
 
@@ -163,14 +163,15 @@ Execution tickets: `./POST_MVP_TICKETS.md`
 - [x] Siri get/set/add/remove quantity support
 - [x] Contract tests + UI support for quantity fields
 
-### Phase 8.6 — Optional LLM Query Normalizer (Paused)
-- [ ] Preserve deterministic parser + handler execution as the source of truth for reads/writes
+### Phase 8.6 — Lookup Normalization + Optional LLM Fallback
+- [x] Preserve deterministic parser + handler execution as the source of truth for reads/writes
+- [ ] Add deterministic query normalizer for pluralization, filler stripping, and location hints
+- [ ] Add regression set for real failed user phrasing and paraphrases
+- [ ] Tune Pinecone-first retrieval quality and query/result caching without hardcoded alias maps
 - [ ] Add schema-validated normalized intent contract (`intent`, `subject`, `amount`, `location_hint`, `confidence`)
-- [ ] Add deterministic-first intent orchestrator with LLM fallback only on weak/ambiguous parses
+- [ ] Add deterministic-first intent orchestrator with optional LLM fallback only on weak/ambiguous parses
 - [ ] Keep LLM role limited to normalization; never direct execution or mutation
-- [ ] Add accuracy + safety regression set for paraphrase handling, unsupported requests, and fallback behavior
 - [ ] Gate rollout behind feature flag with explicit kill switch
-- [ ] Revisit after current UX + mobile milestones
 
 ### Phase 9 — Movement History
 - [x] `movement_history` table
@@ -202,9 +203,11 @@ Execution tickets: `./POST_MVP_TICKETS.md`
 ## 4) Next Tasks (Recommended Order)
 
 ### Queued Now
-1. `10.5-03` First-household onboarding + empty-state guidance
-2. `10.5-04` Accessibility and keyboard-navigation pass
-3. `11-02` Shared API client + mobile auth integration
+1. `8.6-02` Deterministic query normalizer + subject canonicalization
+2. `8.6-03` Real-query regression set for failed lookup phrasing
+3. `8.6-04` Pinecone retrieval tuning + query/result cache strategy
+4. `10.5-03` First-household onboarding + empty-state guidance
+5. `10.5-04` Accessibility and keyboard-navigation pass
 
 ### Security Batch (Completed)
 1. `6.7-03` Remove raw token responses from reset/invite APIs
@@ -212,23 +215,22 @@ Execution tickets: `./POST_MVP_TICKETS.md`
 3. `6.7-05` Optional HttpOnly cookie session mode
 
 ### Next Batch (immediately actionable)
-1. `10.5-03` First-household onboarding + empty-state guidance
-2. `10.5-04` Accessibility and keyboard-navigation pass
-3. `11-02` Shared API client + mobile auth integration
-4. `11-03` Local-only mode data layer
-5. `11-04` Cloud sync offline queue + reconciliation
+1. `8.6-02` Deterministic query normalizer + subject canonicalization
+2. `8.6-03` Real-query regression set for failed lookup phrasing
+3. `8.6-04` Pinecone retrieval tuning + query/result cache strategy
+4. `10.5-03` First-household onboarding + empty-state guidance
+5. `11-02` Shared API client + mobile auth integration
 
 ### Follow-up Batch
-1. `11-03` Local-only mode data layer
-2. `11-04` Cloud sync offline queue + reconciliation
-3. `11-05` Mode toggle + security baseline
+1. `8.6-05` Schema-validated normalized intent contract
+2. `8.6-06` Deterministic-first intent orchestrator + optional LLM fallback
+3. `11-03` Local-only mode data layer
+4. `11-04` Cloud sync offline queue + reconciliation
 
-### Paused (Do Not Start Yet)
-1. `8.6-01` Deterministic tool-route baseline for LLM normalization
-2. `8.6-02` Schema-validated normalized intent contract
-3. `8.6-03` Deterministic-first intent orchestrator + LLM fallback
-4. `8.6-04` Feature-flagged lightweight LLM normalizer
-5. `8.6-05` NLI accuracy/safety evaluation harness
+### Deferred (LLM-Specific)
+1. `8.6-06` Deterministic-first intent orchestrator + optional LLM fallback
+2. `8.6-07` Feature-flagged lightweight LLM normalizer rollout
+3. `8.6-08` NLI accuracy/safety evaluation harness
 
 ---
 

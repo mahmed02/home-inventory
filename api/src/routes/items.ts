@@ -21,7 +21,6 @@ import { deleteItemEmbedding, upsertItemEmbedding } from "../search/itemEmbeddin
 import {
   isSemanticSearchMode,
   invalidateSemanticSearchCacheForScope,
-  semanticItemSearch,
   SemanticSearchMode,
 } from "../search/semanticSearch";
 import { ItemRow } from "../types";
@@ -31,6 +30,7 @@ import {
   inventoryScopeSql,
   resolveInventoryScope,
 } from "../auth/inventoryScope";
+import { resolveItemCandidates } from "../nli/itemResolver";
 import { isUuid, normalizeOptionalText, readLimitOffset } from "../utils";
 
 const itemsRouter = Router();
@@ -830,15 +830,15 @@ itemsRouter.get("/items/search/semantic", async (req, res) => {
       return;
     }
 
-    const searched = await semanticItemSearch({
+    const searched = await resolveItemCandidates({
       scope,
-      query: q,
+      subject: q,
       mode,
       limit,
       offset,
     });
 
-    const results = searched.results.map((row) => ({
+    const results = searched.candidates.map((row) => ({
       id: row.id,
       name: row.name,
       image_url: row.image_url,
@@ -852,7 +852,7 @@ itemsRouter.get("/items/search/semantic", async (req, res) => {
 
     return res.status(200).json({
       results,
-      total: searched.total,
+      total: searched.match_count,
       limit,
       offset,
       mode,
